@@ -1,10 +1,10 @@
 # fancy-openclaw-linear-skill
 
-Agent-side workflow contract for tasks delivered by the [fancy-openclaw-linear-connector](https://github.com/fancymatthenry/fancy-openclaw-linear-connector).
+Agent-side workflow contract for tasks delivered by the [fancy-openclaw-linear-connector](https://github.com/fancymatt/fancy-openclaw-linear-connector).
 
 ## What This Is
 
-An [AgentSkill](https://github.com/fancymatthenry/openclaw) that teaches OpenClaw agents how to behave when they receive Linear tasks routed by the connector. It defines the workflow contract: acknowledgement, status transitions, comment discipline, queue management, handoffs, and failure handling.
+An Agent Skill that teaches OpenClaw agents how to behave when they receive Linear tasks routed by the connector. It defines the workflow contract: acknowledgement, status transitions, comment discipline, queue management, handoffs, and failure handling.
 
 ## How It Fits Together
 
