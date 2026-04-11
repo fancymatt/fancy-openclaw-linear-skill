@@ -38,6 +38,26 @@ function secretFileCandidates(): string[] {
   return [...files];
 }
 
+/**
+ * Patterns that match credential key names we accept.
+ *
+ * We accept env var names that look like any of:
+ *   LINEAR_DEVELOPER_TOKEN, LINEAR_MCKELL_DEVELOPER_TOKEN
+ *   LINEAR_API_KEY, LINEAR_CHARLES_API_KEY
+ *   LINEAR_TOKEN
+ *
+ * The key must contain "linear" AND one of (token|key|developer).
+ */
+const TOKEN_NAME_PATTERNS = [
+  /linear.*developer.*token/i,
+  /linear.*api.*key/i,
+  /linear.*token/i,
+];
+
+function isLinearTokenKey(key: string): boolean {
+  return TOKEN_NAME_PATTERNS.some((pattern) => pattern.test(key));
+}
+
 function loadApiKeyFromEnvFile(filePath: string): string | undefined {
   if (!fs.existsSync(filePath)) {
     return undefined;
@@ -51,7 +71,7 @@ function loadApiKeyFromEnvFile(filePath: string): string | undefined {
     }
 
     const [, key, rawValue] = match;
-    if (!key.toLowerCase().includes("linear") || !key.toLowerCase().includes("api_key")) {
+    if (!isLinearTokenKey(key)) {
       continue;
     }
 
@@ -64,9 +84,23 @@ function loadApiKeyFromEnvFile(filePath: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Env var names checked in priority order.
+ * The first one that is set wins.
+ */
+function envVarCandidates(): string[] {
+  return [
+    "LINEAR_API_KEY",
+    "LINEAR_DEVELOPER_TOKEN",
+  ];
+}
+
 export function ensureApiKey(): string {
-  if (process.env.LINEAR_API_KEY) {
-    return process.env.LINEAR_API_KEY;
+  for (const name of envVarCandidates()) {
+    if (process.env[name]) {
+      process.env.LINEAR_API_KEY = process.env[name]!;
+      return process.env[name]!;
+    }
   }
 
   for (const filePath of secretFileCandidates()) {
@@ -80,7 +114,7 @@ export function ensureApiKey(): string {
   const tried = secretFileCandidates().join(", ");
   const agentName = candidateNames()[0] ?? "unknown";
   throw new Error(
-    `No Linear API key found for agent ${agentName}. Set LINEAR_API_KEY or provision .secrets/linear.env. Looked in: ${tried}`
+    `No Linear API key found for agent ${agentName}. Set LINEAR_API_KEY or LINEAR_DEVELOPER_TOKEN, or provision .secrets/linear.env. Looked in: ${tried}`
   );
 }
 

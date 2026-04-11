@@ -83,9 +83,10 @@ You should see your Linear user name and email printed. If not, see `references/
 
 ### Auth discovery priority
 
-1. `LINEAR_API_KEY` environment variable (always wins if set)
-2. `~/.openclaw/workspace-{agent}/.secrets/linear.env` (key name must contain `linear` and `api_key`)
-3. `{cwd}/.secrets/linear.env` (fallback)
+1. `LINEAR_API_KEY` environment variable
+2. `LINEAR_DEVELOPER_TOKEN` environment variable
+3. `~/.openclaw/workspace-{agent}/.secrets/linear.env` (key must match `linear` + `api_key`/`developer_token`/`token`)
+4. `{cwd}/.secrets/linear.env` (fallback)
 
 ## Docs
 
