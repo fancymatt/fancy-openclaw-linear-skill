@@ -92,6 +92,7 @@ You should see your Linear user name and email printed. If not, see `references/
 
 - `SKILL.md` — agent-facing skill entrypoint and quick reference
 - `references/auth.md` — auth setup, env var names, discovery rules, onboarding checklist
+- `references/permissions.md` — agent permissions guide, credential types, scope requirements
 - `references/hygiene.md` — workflow hygiene rules
 - `references/graphql.md` — safe raw GraphQL escape-hatch patterns
 - `references/workflows.md` — multi-step workflows including GitHub cleanup
