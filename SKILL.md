@@ -1,151 +1,105 @@
 ---
 name: fancy-openclaw-linear-skill
-description: Agent-side workflow contract for tasks delivered by the fancy-openclaw-linear-connector. Defines how agents acknowledge, execute, and complete Linear tasks.
+description: Robust Linear CLI + workflow guidance for OpenClaw agents, including the recommended companion contract for the fancy-openclaw-linear-connector.
 ---
 
-# Linear Workflow Contract
+# Fancy OpenClaw Linear Skill
 
-This skill defines **how you behave** when you receive a task routed from Linear via the [fancy-openclaw-linear-connector](https://github.com/fancymatthenry/fancy-openclaw-linear-connector). It is not about API calls — the base `linear` skill handles that. This is about workflow discipline.
+This skill is the recommended agent-side companion to the `fancy-openclaw-linear-connector`.
+It also works as a general-purpose Linear skill on its own.
 
-## Prerequisites
+## Setup
 
-- **Base `linear` skill** installed (provides `linear.sh` for API access)
-- **Linear API key** available (see `linear-access` skill)
+Provide a personal Linear API key either by:
+- setting `LINEAR_API_KEY`
+- or provisioning `.secrets/linear.env` in your agent workspace
 
-Use the base skill's scripts for all Linear API calls:
+Verify setup:
 
 ```bash
-LINEAR_SCRIPT="{baseDir}/../linear/scripts/linear.sh"
+npm install
+npm run build
+node dist/index.js auth check --human
 ```
 
-## This Skill Is Optional
+## Command quick reference
 
-The connector works without this skill installed. But without it, agents have no shared contract for how to handle tasks — leading to inconsistent status updates, comment spam, and dropped work. Install it.
+- `linear auth check` - verify auth/bootstrap
+- `linear my-issues` - all assigned issues
+- `linear my-todos` - assigned Todo issues
+- `linear my-new [--since ISO]` - recently updated assigned issues
+- `linear issue <ID>` - full issue detail
+- `linear create <TEAM> <TITLE> [flags]` - create issue
+- `linear comment <ID> <BODY> | --body-file <path>` - add comment
+- `linear states <TEAM> [--refresh]` - fetch/cache workflow states
+- `linear status <ID> <STATE>` - update status with dynamic state resolution
+- `linear assign <ID> <USER>` - assign issue
+- `linear priority <ID> <LEVEL>` - set priority number
+- `linear handoff <ID> <REVIEWER> <COMMENT>` - comment + assign + move to Needs Review
+- `linear projects` - list projects
+- `linear project-detail <NAME>` - get description and content
+- `linear project-attach <ID> <NAME>` - attach issue to project
+- `linear project-issues <NAME>` - list project issues
+- `linear milestones <TEAM>` - list milestones
+- `linear milestone-create <PROJECT> <NAME> <YYYY-MM-DD>` - create milestone
+- `linear milestone-attach <ID> <NAME>` - attach milestone
+- `linear relations <ID>` - list issue relations
+- `linear block <ID> --blocked-by <OTHER>` - add dependency safely
+- `linear unblock <ID> --blocked-by <OTHER>` - remove dependency
+- `linear subtask <TEAM> <TITLE> --parent <ID>` - create child issue
+- `linear children <ID>` - list subtasks
+- `linear board <TEAM>` - non-done issues grouped by state
+- `linear review-queue` - your Needs Review issues
+- `linear stalled [days]` - your stale In Progress issues
+- `linear comments <ID> [--all]` - ordered oldest-first comments
+- `linear upload <FILE> [--comment <ID>]` - upload asset, optionally comment URL
 
----
+## Common workflows
 
-## Task Lifecycle
+### Handoff
 
-### 1. Acknowledge Receipt
+```bash
+linear handoff AI-123 Charles --comment-file /tmp/review.md
+```
 
-When you receive a `[NEW TASK]` message from the connector:
+### Create + attach
 
-- **Immediately** transition the issue from `Todo` → `In Progress`
-- Do NOT comment "I'm on it" or "Acknowledged" — the status change IS the acknowledgement
-- If you cannot start the task right now (e.g., blocked by another task), leave it in `Todo` and do not acknowledge until you begin
+```bash
+linear create AI "Title" --project <project-id> --priority 2
+```
 
-### 2. Do the Work
+### Review queue sweep
 
-- Stay in `In Progress` for the duration
-- Comment **only** when you have something substantive: a deliverable, a blocker, a decision point, or a question
-- If you discover the task is larger than expected, comment with a scope assessment and ask for guidance
-- If you need something from a human or another agent, comment with the specific ask and assign/mention them
+```bash
+linear review-queue
+linear comments AI-123
+linear issue AI-123
+```
 
-### 3. Request Review
+### GitHub branch to PR to cleanup
 
-Move to `Needs Review` when:
+See `references/workflows.md` for the full worktree workflow including cleanup after merge.
 
-- The work is **complete and verifiable** — not "mostly done"
-- You've attached or linked all deliverables
-- A human or reviewer can evaluate the work without asking you clarifying questions
+## Hygiene rules
 
-Do NOT move to `Needs Review` if:
+Short version:
+- no orphan issues
+- `Needs Review` requires reassignment
+- `Done` means genuinely done
+- read comments oldest-first
+- use explicit blocking direction
 
-- You're just tired of working on it
-- You want feedback on a partial approach (comment instead)
-- There are known issues you haven't addressed
+Full rules: `references/hygiene.md`
 
-### 4. Complete
+## Raw GraphQL
 
-Only a **human or designated reviewer** moves issues to `Done`. Agents do not self-close unless explicitly told "mark it done" or the task type is pre-approved for self-closure (e.g., automated maintenance tasks).
+Use raw GraphQL only when the CLI does not yet support the operation.
+Always build JSON with `jq -n --arg`, never with string interpolation.
 
-Exception: if the task description explicitly says "close when complete," you may move to `Done` after delivering.
+Examples: `references/graphql.md`
 
----
+## Known limitations
 
-## Comment Hygiene
-
-Comments are for **net-new information only**. Every comment should pass the test: "Would a human reading this learn something they didn't already know?"
-
-### Good Comments
-
-- "Deliverable attached: `report.pdf` — covers Q1 metrics as requested"
-- "Blocked: need API credentials for the staging environment. @matt can you provide?"
-- "Scope change: the CSV import also needs validation logic. Estimate +2h. Proceed?"
-- "Decision: went with approach B (batch processing) because X. See commit abc123."
-
-### Bad Comments
-
-- "Working on this now" (the status change says this)
-- "Making progress" (say nothing or say something specific)
-- "Done!" (move the status instead)
-- "I'll look into this" (just look into it)
-
----
-
-## Queue Management
-
-When multiple tasks arrive:
-
-1. **Work sequentially** unless tasks are explicitly parallelizable
-2. **Priority order:** assigned priority in Linear > order received
-3. **Don't acknowledge tasks you can't start** — leave them in `Todo`
-4. If your queue is full and a new Urgent/High task arrives, comment on your current task that you're pausing it, move it back to `Todo`, and pick up the urgent one
-5. Never have more than **one task In Progress** unless you are genuinely doing parallel work (rare)
-
----
-
-## Handoff Protocol
-
-### To Another Agent
-
-1. Comment with context: what you've done, what remains, and why you're handing off
-2. Unassign yourself
-3. Assign the target agent (or leave unassigned if routing to a pool)
-4. Move back to `Todo`
-
-### Back to Human
-
-1. Comment with your findings, deliverables, or the reason for handoff
-2. Move to `Needs Review` if work is complete, or `Todo` if you're returning it unfinished
-3. Assign the human
-
-### Receiving a Handoff
-
-Treat it like a new task. Read the full comment history before starting. Don't re-ask questions that were already answered in the thread.
-
----
-
-## Failure Handling
-
-### When You're Stuck
-
-1. **Try harder first.** Search, read docs, explore. Don't bail at the first obstacle.
-2. If stuck for real: comment with what you tried, what failed, and what you think the blocker is
-3. Keep the issue `In Progress` if you're actively debugging; move to `Todo` with a blocker comment if you need external help
-
-### When a Task Is Impossible
-
-1. Comment explaining why the task cannot be completed as specified
-2. Suggest alternatives if any exist
-3. Move to `Needs Review` so a human can decide next steps
-4. Do NOT silently drop or ignore tasks
-
-### When You Made a Mistake
-
-1. Comment immediately with what went wrong
-2. If reversible, fix it and note what you did
-3. If not reversible, flag it clearly and move to `Needs Review`
-
----
-
-## Rules Summary
-
-| Rule | Why |
-|---|---|
-| Status change = acknowledgement | No comment spam |
-| One task In Progress at a time | Focus and honesty |
-| Comments carry information, not ceremony | Signal over noise |
-| Don't self-close issues | Human oversight |
-| Hand off with context | Continuity |
-| Fail loudly, not silently | Trust |
+- some advanced Linear fields may still need raw GraphQL during early versions
+- relation removal resolves by current known relation graph, so exact matching matters
+- `create` currently expects IDs for project/milestone/assignee flags rather than name lookup
