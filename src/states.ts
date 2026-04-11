@@ -66,7 +66,6 @@ export async function getWorkflowStates(teamId: string, refresh = false): Promis
               type
               color
               position
-              teamId
             }
           }
         }

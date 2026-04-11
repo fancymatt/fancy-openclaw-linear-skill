@@ -39,11 +39,12 @@ export async function linearGraphQL<T>(
   } catch (error) {
     if (axios.isAxiosError(error)) {
       if (error.response) {
+        const graphqlErrors = error.response.data?.errors?.map((e: {message: string}) => e.message).join("; ");
         if (error.response.status === 401) {
           throw new LinearApiError("Unauthorized", "UNAUTHORIZED");
         }
         throw new LinearApiError(
-          `Linear API returned HTTP ${error.response.status}: ${error.response.statusText}`,
+          graphqlErrors || `Linear API returned HTTP ${error.response.status}: ${error.response.statusText}`,
           `HTTP_${error.response.status}`
         );
       }
