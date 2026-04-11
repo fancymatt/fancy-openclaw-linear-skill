@@ -1,58 +1,75 @@
 ---
 name: fancy-openclaw-linear-skill
-description: Robust Linear CLI + workflow guidance for OpenClaw agents, including the recommended companion contract for the fancy-openclaw-linear-connector.
+description: Self-contained Linear skill for OpenClaw, including CLI commands and workflow guidance. Recommended companion to the fancy-openclaw-linear-connector.
 ---
 
 # Fancy OpenClaw Linear Skill
 
-This skill is the recommended agent-side companion to the `fancy-openclaw-linear-connector`.
-It also works as a general-purpose Linear skill on its own.
+This repo is the Linear skill.
+It is self-contained.
+It does not assume a separate legacy internal `linear` skill is installed.
+
+It includes:
+- a Linear CLI for common reads and mutations
+- auth/bootstrap behavior
+- workflow-state discovery
+- handoff, board, relation, project, and milestone helpers
+- workflow and hygiene guidance for agents
 
 ## Setup
 
-Provide a personal Linear API key either by:
-- setting `LINEAR_API_KEY`
-- or provisioning `.secrets/linear.env` in your agent workspace
-
-Verify setup:
+Install dependencies and build the CLI:
 
 ```bash
 npm install
 npm run build
+```
+
+Then verify auth:
+
+```bash
 node dist/index.js auth check --human
 ```
 
-## Command quick reference
+## Supported auth inputs
 
-- `linear auth check` - verify auth/bootstrap
-- `linear my-issues` - all assigned issues
-- `linear my-todos` - assigned Todo issues
-- `linear my-new [--since ISO]` - recently updated assigned issues
-- `linear issue <ID>` - full issue detail
-- `linear create <TEAM> <TITLE> [flags]` - create issue
-- `linear comment <ID> <BODY> | --body-file <path>` - add comment
-- `linear states <TEAM> [--refresh]` - fetch/cache workflow states
-- `linear status <ID> <STATE>` - update status with dynamic state resolution
-- `linear assign <ID> <USER>` - assign issue
-- `linear priority <ID> <LEVEL>` - set priority number
-- `linear handoff <ID> <REVIEWER> <COMMENT>` - comment + assign + move to Needs Review
-- `linear projects` - list projects
-- `linear project-detail <NAME>` - get description and content
-- `linear project-attach <ID> <NAME>` - attach issue to project
-- `linear project-issues <NAME>` - list project issues
-- `linear milestones <TEAM>` - list milestones
-- `linear milestone-create <PROJECT> <NAME> <YYYY-MM-DD>` - create milestone
-- `linear milestone-attach <ID> <NAME>` - attach milestone
-- `linear relations <ID>` - list issue relations
-- `linear block <ID> --blocked-by <OTHER>` - add dependency safely
-- `linear unblock <ID> --blocked-by <OTHER>` - remove dependency
-- `linear subtask <TEAM> <TITLE> --parent <ID>` - create child issue
-- `linear children <ID>` - list subtasks
-- `linear board <TEAM>` - non-done issues grouped by state
-- `linear review-queue` - your Needs Review issues
-- `linear stalled [days]` - your stale In Progress issues
-- `linear comments <ID> [--all]` - ordered oldest-first comments
-- `linear upload <FILE> [--comment <ID>]` - upload asset, optionally comment URL
+Currently supported:
+- `LINEAR_API_KEY`
+- agent workspace `.secrets/linear.env`
+
+Note: this is being hardened further to better support explicit developer-token onboarding and first-time setup for app-style agents.
+
+## Quick reference
+
+- `linear auth check`
+- `linear my-issues`
+- `linear my-todos`
+- `linear my-new [--since ISO]`
+- `linear issue <ID>`
+- `linear create <TEAM> <TITLE> [flags]`
+- `linear comment <ID> <BODY> | --body-file <path>`
+- `linear states <TEAM> [--refresh]`
+- `linear status <ID> <STATE>`
+- `linear assign <ID> <USER>`
+- `linear priority <ID> <LEVEL>`
+- `linear handoff <ID> <REVIEWER> <COMMENT>`
+- `linear projects`
+- `linear project-detail <NAME>`
+- `linear project-attach <ID> <NAME>`
+- `linear project-issues <NAME>`
+- `linear milestones <TEAM>`
+- `linear milestone-create <PROJECT> <NAME> <YYYY-MM-DD>`
+- `linear milestone-attach <ID> <NAME>`
+- `linear relations <ID>`
+- `linear block <ID> --blocked-by <OTHER>`
+- `linear unblock <ID> --blocked-by <OTHER>`
+- `linear subtask <TEAM> <TITLE> --parent <ID>`
+- `linear children <ID>`
+- `linear board <TEAM>`
+- `linear review-queue`
+- `linear stalled [days]`
+- `linear comments <ID> [--all]`
+- `linear upload <FILE> [--comment <ID>]`
 
 ## Common workflows
 
@@ -60,12 +77,6 @@ node dist/index.js auth check --human
 
 ```bash
 linear handoff AI-123 Charles --comment-file /tmp/review.md
-```
-
-### Create + attach
-
-```bash
-linear create AI "Title" --project <project-id> --priority 2
 ```
 
 ### Review queue sweep
@@ -76,9 +87,9 @@ linear comments AI-123
 linear issue AI-123
 ```
 
-### GitHub branch to PR to cleanup
+### GitHub worktree lifecycle
 
-See `references/workflows.md` for the full worktree workflow including cleanup after merge.
+See `references/workflows.md`.
 
 ## Hygiene rules
 
@@ -98,8 +109,7 @@ Always build JSON with `jq -n --arg`, never with string interpolation.
 
 Examples: `references/graphql.md`
 
-## Known limitations
+## Connector relationship
 
-- some advanced Linear fields may still need raw GraphQL during early versions
-- relation removal resolves by current known relation graph, so exact matching matters
-- `create` currently expects IDs for project/milestone/assignee flags rather than name lookup
+This skill works on its own.
+If paired with `fancy-openclaw-linear-connector`, the connector handles delivery/routing while this skill handles agent-side commands and workflow discipline.

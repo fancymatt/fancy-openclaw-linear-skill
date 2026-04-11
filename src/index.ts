@@ -10,8 +10,57 @@ import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNe
 import { attachIssueToMilestone, attachIssueToProject, createMilestone, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
 import { createBlockingRelation, listRelations, removeBlockingRelation } from "./relations";
 import { findStateByName, getWorkflowStates } from "./states";
+import { listTeams, resolveTeamId } from "./teams";
 import { uploadFile } from "./upload";
+import { linearGraphQL } from "./client";
 import { CreateIssueInput, UpdateIssueInput } from "./types";
+
+interface NotificationsResponse {
+  notifications: {
+    nodes: Array<{
+      id: string;
+      type: string;
+      readAt?: string | null;
+      createdAt: string;
+      updatedAt: string;
+      issue?: { id: string; identifier: string; title: string; state?: { name: string } };
+      project?: { id: string; name: string };
+    }>;
+  };
+}
+
+interface UrgentIssuesResponse {
+  issues: {
+    nodes: Array<{
+      id: string;
+      identifier: string;
+      title: string;
+      priority: number;
+      url: string;
+      state?: { name: string; type: string };
+      assignee?: { name: string };
+      team?: { key: string; name: string };
+    }>;
+  };
+}
+
+interface StandupIssueNode {
+  id: string;
+  identifier: string;
+  title: string;
+  priority?: number;
+  team?: { key: string };
+}
+
+interface StandupResponse {
+  todos: { assignedIssues: { nodes: StandupIssueNode[] } };
+  inProgress: { assignedIssues: { nodes: StandupIssueNode[] } };
+  recentlyDone: { assignedIssues: { nodes: StandupIssueNode[] } };
+}
+
+interface BranchResponse {
+  issue: { branchName: string } | null;
+}
 
 function parseOptionalNumber(value: string | undefined): number | undefined {
   if (value === undefined) {
@@ -86,8 +135,9 @@ async function main(): Promise<void> {
     .option("--parent <parentId>")
     .action(async (team: string, title: string, options: Record<string, string | undefined>) => {
       await runCommand(async () => {
+        const teamId = await resolveTeamId(team);
         const input: CreateIssueInput = {
-          teamId: team,
+          teamId,
           title,
           description: options.description,
           projectId: options.project,
@@ -116,7 +166,10 @@ async function main(): Promise<void> {
     });
 
   program.command("states").argument("<team>").option("--refresh").action(async (team: string, options: { refresh?: boolean }) => {
-    await runCommand(async () => getWorkflowStates(team, Boolean(options.refresh)), program.opts<{ human?: boolean }>().human);
+    await runCommand(async () => {
+      const teamId = await resolveTeamId(team);
+      return getWorkflowStates(teamId, Boolean(options.refresh));
+    }, program.opts<{ human?: boolean }>().human);
   });
 
   program.command("status").argument("<id>").argument("<state>").option("--team <teamId>").action(async (id: string, state: string, options: { team?: string }) => {
@@ -159,7 +212,10 @@ async function main(): Promise<void> {
     await runCommand(async () => getProjectIssues(name), program.opts<{ human?: boolean }>().human);
   });
   program.command("milestones").argument("<team>").action(async (team: string) => {
-    await runCommand(async () => listMilestones(team), program.opts<{ human?: boolean }>().human);
+    await runCommand(async () => {
+      const teamId = await resolveTeamId(team);
+      return listMilestones(teamId);
+    }, program.opts<{ human?: boolean }>().human);
   });
   program.command("milestone-create").argument("<project>").argument("<name>").argument("<targetDate>").action(async (project: string, name: string, targetDate: string) => {
     await runCommand(async () => createMilestone(project, name, targetDate), program.opts<{ human?: boolean }>().human);
@@ -177,14 +233,20 @@ async function main(): Promise<void> {
     await runCommand(async () => removeBlockingRelation(id, options.blockedBy), program.opts<{ human?: boolean }>().human);
   });
   program.command("subtask").argument("<team>").argument("<title>").requiredOption("--parent <id>").action(async (team: string, title: string, options: { parent: string }) => {
-    await runCommand(async () => createIssue({ teamId: team, title, parentId: options.parent }), program.opts<{ human?: boolean }>().human);
+    await runCommand(async () => {
+      const teamId = await resolveTeamId(team);
+      return createIssue({ teamId, title, parentId: options.parent });
+    }, program.opts<{ human?: boolean }>().human);
   });
   program.command("children").argument("<id>").action(async (id: string) => {
     await runCommand(async () => (await getIssue(id)).children ?? [], program.opts<{ human?: boolean }>().human);
   });
 
   program.command("board").argument("<team>").action(async (team: string) => {
-    await runCommand(async () => getBoard(team), program.opts<{ human?: boolean }>().human);
+    await runCommand(async () => {
+      const teamId = await resolveTeamId(team);
+      return getBoard(teamId);
+    }, program.opts<{ human?: boolean }>().human);
   });
   program.command("review-queue").action(async () => {
     await runCommand(async () => getReviewQueue(), program.opts<{ human?: boolean }>().human);
@@ -198,6 +260,124 @@ async function main(): Promise<void> {
 
   program.command("upload").argument("<file>").option("--comment <issueId>").action(async (file: string, options: { comment?: string }) => {
     await runCommand(async () => uploadFile(file, options.comment), program.opts<{ human?: boolean }>().human);
+  });
+
+  // --- New commands ---
+
+  program.command("teams").option("--refresh").description("List all teams").action(async (options: { refresh?: boolean }) => {
+    await runCommand(async () => listTeams(Boolean(options.refresh)), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("notifications").option("--limit <n>").description("Unread notifications").action(async (options: { limit?: string }) => {
+    await runCommand(async () => {
+      const limit = options.limit ? Number(options.limit) : 25;
+      const data = await linearGraphQL<NotificationsResponse>(
+        `
+          query Notifications($first: Int!) {
+            notifications(first: $first) {
+              nodes {
+                id
+                type
+                readAt
+                createdAt
+                updatedAt
+                ... on IssueNotification {
+                  issue { id identifier title state { name } }
+                }
+                ... on ProjectNotification {
+                  project { id name }
+                }
+              }
+            }
+          }
+        `,
+        { first: limit }
+      );
+      return data.notifications.nodes.filter((n: { readAt?: string | null }) => !n.readAt);
+    }, program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("urgent").option("--limit <n>").description("High-priority issues (priority ≤ 2)").action(async (options: { limit?: string }) => {
+    await runCommand(async () => {
+      const limit = options.limit ? Number(options.limit) : 25;
+      const data = await linearGraphQL<UrgentIssuesResponse>(
+        `
+          query UrgentIssues($first: Int!) {
+            issues(first: $first, filter: {
+              priority: { lte: 2, gte: 1 },
+              state: { type: { nin: ["completed", "canceled"] } }
+            }) {
+              nodes {
+                id identifier title priority url
+                state { name type }
+                assignee { name }
+                team { key name }
+              }
+            }
+          }
+        `,
+        { first: limit }
+      );
+      return data.issues.nodes;
+    }, program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("standup").description("Daily standup summary").action(async () => {
+    await runCommand(async () => {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const data = await linearGraphQL<StandupResponse>(
+        `
+          query Standup($since: DateTimeOrDuration!) {
+            todos: viewer {
+              assignedIssues(first: 50, filter: { state: { name: { in: ["Todo"] } } }) {
+                nodes { id identifier title priority team { key } }
+              }
+            }
+            inProgress: viewer {
+              assignedIssues(first: 50, filter: { state: { name: { in: ["In Progress"] } } }) {
+                nodes { id identifier title priority team { key } }
+              }
+            }
+            recentlyDone: viewer {
+              assignedIssues(first: 50, filter: {
+                state: { type: { eq: "completed" } },
+                completedAt: { gte: $since }
+              }) {
+                nodes { id identifier title team { key } }
+              }
+            }
+          }
+        `,
+        { since: sevenDaysAgo }
+      );
+
+      return {
+        todos: data.todos.assignedIssues.nodes,
+        inProgress: data.inProgress.assignedIssues.nodes,
+        recentlyDone: data.recentlyDone.assignedIssues.nodes
+      };
+    }, program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("branch").argument("<id>").description("Get branch name for an issue").action(async (id: string) => {
+    await runCommand(async () => {
+      const issue = await getIssue(id);
+      const data = await linearGraphQL<BranchResponse>(
+        `
+          query IssueBranch($id: String!) {
+            issue(id: $id) {
+              branchName
+            }
+          }
+        `,
+        { id: issue.id }
+      );
+      if (!data.issue?.branchName) {
+        throw new Error(`No branch name for issue ${id}`);
+      }
+      return { identifier: issue.identifier, branchName: data.issue.branchName };
+    }, program.opts<{ human?: boolean }>().human);
   });
 
   await program.parseAsync(process.argv);
