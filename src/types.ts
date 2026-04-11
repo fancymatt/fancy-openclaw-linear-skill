@@ -1,0 +1,101 @@
+export interface User {
+  id: string;
+  name: string;
+  email?: string | null;
+}
+
+export interface WorkflowState {
+  id: string;
+  name: string;
+  type?: string | null;
+  color?: string | null;
+  position?: number | null;
+  teamId?: string | null;
+}
+
+export interface Comment {
+  id: string;
+  body: string;
+  createdAt?: string;
+  updatedAt?: string;
+  user?: User | null;
+}
+
+export interface ProjectMilestone {
+  id: string;
+  name: string;
+  description?: string | null;
+  targetDate?: string | null;
+}
+
+export interface IssueRelation {
+  id: string;
+  type?: string | null;
+  issue: Pick<Issue, "id" | "identifier" | "title">;
+  relatedIssue: Pick<Issue, "id" | "identifier" | "title">;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description?: string | null;
+  content?: string | null;
+  state?: string | null;
+  progress?: number | null;
+  targetDate?: string | null;
+  startDate?: string | null;
+  milestones?: ProjectMilestone[];
+}
+
+export interface Issue {
+  id: string;
+  identifier: string;
+  title: string;
+  description?: string | null;
+  priority?: number | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+  url?: string;
+  team?: {
+    id: string;
+    key?: string;
+    name?: string;
+  } | null;
+  state?: WorkflowState | null;
+  assignee?: User | null;
+  project?: {
+    id: string;
+    name: string;
+  } | null;
+  milestone?: ProjectMilestone | null;
+  labels?: Array<{
+    id: string;
+    name: string;
+    color?: string | null;
+  }>;
+  parent?: Pick<Issue, "id" | "identifier" | "title"> | null;
+  children?: Array<Pick<Issue, "id" | "identifier" | "title"> & { state?: WorkflowState | null }>;
+  relations?: IssueRelation[];
+  comments?: Comment[];
+}
+
+export interface CreateIssueInput {
+  teamId: string;
+  title: string;
+  description?: string;
+  projectId?: string;
+  projectMilestoneId?: string;
+  assigneeId?: string;
+  priority?: number;
+  parentId?: string;
+}
+
+export interface UpdateIssueInput {
+  title?: string;
+  description?: string;
+  stateId?: string;
+  assigneeId?: string;
+  priority?: number;
+  projectId?: string;
+  projectMilestoneId?: string;
+}
