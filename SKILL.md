@@ -31,13 +31,23 @@ Then verify auth:
 node dist/index.js auth check --human
 ```
 
-## Supported auth inputs
+## Auth
 
-Currently supported:
-- `LINEAR_API_KEY`
-- agent workspace `.secrets/linear.env`
+This skill uses Linear personal API keys (developer tokens). Full setup guide: `references/auth.md`.
 
-Note: this is being hardened further to better support explicit developer-token onboarding and first-time setup for app-style agents.
+**Quick version:**
+
+1. Generate token at Linear → Settings → Account → Security & access → API
+2. Store in `~/.openclaw/workspace-{agent}/.secrets/linear.env` as `LINEAR_{AGENT}_API_KEY=lin_api_...`
+3. Or set `LINEAR_API_KEY` env var directly
+4. Run `linear auth check --human` to verify
+
+**Discovery priority:**
+1. `LINEAR_API_KEY` env var (always wins)
+2. `~/.openclaw/workspace-{agent}/.secrets/linear.env` (key must contain `linear` + `api_key`)
+3. `{cwd}/.secrets/linear.env` (fallback)
+
+**Agent name sources (first wins):** `OPENCLAW_AGENT_NAME`, `OPENCLAW_AGENT_ID`, `account_id`, `$USER`, home dir basename
 
 ## Quick reference
 
