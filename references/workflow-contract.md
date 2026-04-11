@@ -1,147 +1,65 @@
 # Workflow Contract Reference
 
-Detailed reference for the Linear task lifecycle managed by OpenClaw agents.
+This skill includes both the Linear CLI and the workflow contract for how agents should behave when working from Linear tickets.
 
-## Full Task Lifecycle
+## Core principle
 
-### Stage 1: Delivery
+The CLI handles access and mutations.
+The workflow contract handles judgment and discipline.
+You need both.
 
-The connector sends a `[NEW TASK]` message to the assigned agent's session. The message includes:
+## Full task lifecycle
 
-- Issue ID, title, and description
-- Priority level
-- Assignee (the receiving agent)
-- Any labels or project context
+### 1. Pick up work honestly
 
-**Agent behavior:** Parse the task. Evaluate whether you can start immediately.
+- Move to `In Progress` when you actually start
+- Do not mark multiple tickets active just because they exist
+- If you cannot start yet, leave the issue in `Todo`
 
-### Stage 2: Acknowledgement
+### 2. Work with signal, not noise
 
-If you can start now:
-- Transition the issue to `In Progress` via the base linear skill
-- Begin work immediately
+- Comment when you have a deliverable, blocker, decision, or scope change
+- Do not comment empty ceremony like "on it" or "making progress"
+- Use the CLI to keep state honest
 
-If you cannot start now (queue full, blocked, wrong agent):
-- Leave in `Todo`
-- If wrong agent: comment explaining why and unassign yourself
-- If blocked: comment with the blocker
+### 3. Hand off cleanly
 
-**The status transition IS the acknowledgement.** No comment needed.
+Use the skill's `handoff` flow when work is review-ready:
+- add a real comment
+- assign the reviewer
+- move to `Needs Review`
 
-### Stage 3: Execution
+### 4. Close the loop correctly
 
-Active work phase. The issue stays `In Progress`.
+- `Done` means complete and verified
+- do not self-close technical work casually
+- preserve enough context on the ticket that the next reader does not need to guess
 
-**Expected behaviors:**
-- Work focused on the task's acceptance criteria
-- Comment only with substantive updates (deliverables, blockers, scope changes, decisions)
-- If the task takes longer than expected, comment with a revised estimate
-- If you need to pause for a higher-priority task, comment why and move back to `Todo`
+## Anti-patterns
 
-### Stage 4: Review Submission
+### Status theater
+Marking lots of things `In Progress` that are not actually being worked.
 
-When work is complete:
-- Attach or link all deliverables in a comment
-- Transition to `Needs Review`
-- The comment with deliverables should be self-contained — a reviewer shouldn't need to ask what was done
+### Comment spam
+Comments that add no new information.
 
-### Stage 5: Completion
+### Incomplete handoff
+Comment without reassignment, or reassignment without state change.
 
-A human or designated reviewer evaluates the work:
-- If accepted → moved to `Done`
-- If changes needed → moved back to `In Progress` with review comments
-- Agent addresses feedback and re-submits to `Needs Review`
+### Silent drop
+Task acknowledged, then no visible outcome.
 
----
+## Good default commands
 
-## Anti-Patterns
-
-### Status Theater
-
-**What it looks like:** Moving issues to `In Progress` immediately upon receipt, even when you have 5 other tasks queued. Everything is "in progress," nothing is actually being worked on.
-
-**Why it's bad:** Status loses meaning. Humans can't tell what's actually being worked on.
-
-**Instead:** Only one task `In Progress` at a time. Be honest about your queue.
-
-### Comment Spam
-
-**What it looks like:**
-- "Acknowledged!"
-- "Looking into this now"
-- "Making good progress"
-- "Almost done"
-- "Done! ✅"
-
-**Why it's bad:** Noise drowns signal. Humans learn to ignore comments, then miss the ones that matter.
-
-**Instead:** Comment when you have information the reader doesn't already have. Status changes communicate progress.
-
-### Premature State Changes
-
-**What it looks like:** Moving to `Needs Review` when the work is 80% done "so someone can start looking at it."
-
-**Why it's bad:** Reviewers waste time on incomplete work. Trust in the `Needs Review` status erodes.
-
-**Instead:** `Needs Review` means "this is ready to evaluate." Not before.
-
-### Silent Drops
-
-**What it looks like:** A task is assigned, the agent acknowledges, then... nothing. No updates, no status change, no completion.
-
-**Why it's bad:** The task falls into a black hole. Nobody knows if it's being worked on, blocked, or forgotten.
-
-**Instead:** If you're stuck, say so. If you can't do it, hand it off. Loud failure > silent failure.
-
-### Premature Self-Closure
-
-**What it looks like:** Agent moves task to `Done` without review.
-
-**Why it's bad:** Bypasses human oversight. Work quality degrades without feedback loops.
-
-**Instead:** Move to `Needs Review`. Let a human close it.
-
----
-
-## Examples
-
-### Good: Bug Fix Task
-
-```
-[Connector delivers task: "Fix login timeout on mobile"]
-
-Agent: (moves to In Progress)
-Agent: (investigates, finds the issue in session handling)
-Agent: (comments) "Root cause: session TTL was 5min on mobile vs 30min on desktop.
-        Fix in commit abc123 — unified to 30min. Tested on iOS and Android simulators."
-Agent: (moves to Needs Review)
-
-Reviewer: (verifies fix, moves to Done)
+```bash
+linear issue AI-123
+linear comments AI-123
+linear status AI-123 review
+linear handoff AI-123 Charles --comment-file /tmp/review.md
 ```
 
-### Good: Blocked Task
+## Relationship to the connector
 
-```
-[Connector delivers task: "Update API docs for v3 endpoints"]
-
-Agent: (moves to In Progress)
-Agent: (comments) "Blocked: v3 endpoints aren't deployed to staging yet.
-        Need @matt to confirm the deploy timeline so I can document actual behavior,
-        not just the spec. Moving back to Todo."
-Agent: (moves to Todo)
-```
-
-### Bad: Everything Wrong
-
-```
-[Connector delivers task: "Add export feature to dashboard"]
-
-Agent: (comments) "On it! 🚀"
-Agent: (moves to In Progress)
-Agent: (comments) "Making progress!"
-Agent: (comments) "Almost there..."
-Agent: (moves to Done)
-Agent: (comments) "Done! Let me know if you need anything else! 😊"
-
-[No deliverable attached. No description of what was built. Self-closed.]
-```
+If you also use `fancy-openclaw-linear-connector`, it delivers work into the agent environment.
+This skill remains the agent-side tool and workflow layer.
+The connector is helpful, but not required for this skill to be useful.

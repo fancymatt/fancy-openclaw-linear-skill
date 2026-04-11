@@ -159,7 +159,37 @@ function normalizeIssue(issue: RawIssue): Issue {
   };
 }
 
+interface IssuesByFilterResponse {
+  issues: {
+    nodes: Issue[];
+  };
+}
+
+const IDENTIFIER_RE = /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/;
+
 export async function getIssue(id: string): Promise<Issue> {
+  const identifierMatch = IDENTIFIER_RE.exec(id);
+  if (identifierMatch) {
+    const teamKey = identifierMatch[1].toUpperCase();
+    const number = Number(identifierMatch[2]);
+    const data = await linearGraphQL<IssuesByFilterResponse>(
+      `
+        query IssueByIdentifier($teamKey: String!, $number: Float!) {
+          issues(filter: { number: { eq: $number }, team: { key: { eq: $teamKey } } }) {
+            nodes {
+              ${ISSUE_FIELDS}
+            }
+          }
+        }
+      `,
+      { teamKey, number }
+    );
+    if (!data.issues.nodes.length) {
+      throw new Error(`Issue not found: ${id}`);
+    }
+    return normalizeIssue(data.issues.nodes[0] as unknown as RawIssue);
+  }
+
   const data = await linearGraphQL<IssueResponse>(
     `
       query IssueDetail($id: String!) {
