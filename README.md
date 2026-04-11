@@ -60,25 +60,42 @@ npm run build
 ln -s ~/Code/fancy-openclaw-linear-skill ~/.openclaw/workspace/skills/fancy-openclaw-linear-skill
 ```
 
-## Verify
+## Auth Setup
 
-```bash
-cd ~/.openclaw/workspace/skills/fancy-openclaw-linear-skill
-node dist/index.js auth check --human
-```
+This skill authenticates to Linear using personal API keys (developer tokens). No OAuth is needed.
+
+### Quick start for a new agent
+
+1. Generate a Linear API key: **Linear → Settings → Account → Security & access → API → New token**
+2. Create the secrets directory and write the key:
+   ```bash
+   mkdir -p ~/.openclaw/workspace-{agent}/.secrets
+   echo "LINEAR_{AGENT}_API_KEY=lin_api_your_token" > ~/.openclaw/workspace-{agent}/.secrets/linear.env
+   chmod 600 ~/.openclaw/workspace-{agent}/.secrets/linear.env
+   ```
+3. Verify:
+   ```bash
+   cd ~/.openclaw/workspace/skills/fancy-openclaw-linear-skill
+   node dist/index.js auth check --human
+   ```
+
+You should see your Linear user name and email printed. If not, see `references/auth.md` for the full auth guide including env var names, discovery rules, and troubleshooting.
+
+### Auth discovery priority
+
+1. `LINEAR_API_KEY` environment variable (always wins if set)
+2. `~/.openclaw/workspace-{agent}/.secrets/linear.env` (key name must contain `linear` and `api_key`)
+3. `{cwd}/.secrets/linear.env` (fallback)
 
 ## Docs
 
 - `SKILL.md` — agent-facing skill entrypoint and quick reference
+- `references/auth.md` — auth setup, env var names, discovery rules, onboarding checklist
 - `references/hygiene.md` — workflow hygiene rules
 - `references/graphql.md` — safe raw GraphQL escape-hatch patterns
 - `references/workflows.md` — multi-step workflows including GitHub cleanup
 - `references/workflow-contract.md` — higher-level behavioral contract
 - `references/connector-integration.md` — connector-specific notes
-
-## Current note
-
-This repo is being actively hardened through real dogfooding. Auth/bootstrap and permissions setup are being tightened to make fresh-agent onboarding fully explicit.
 
 ## License
 
