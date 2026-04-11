@@ -53,7 +53,12 @@ This skill uses Linear personal API keys (developer tokens). Full setup guide: `
 ## Quick reference
 
 - `linear auth check`
+- `linear teams [--refresh]`
 - `linear my-issues`
+- `linear notifications [--limit N]`
+- `linear urgent [--limit N]`
+- `linear standup`
+- `linear branch <ID>`
 - `linear my-todos`
 - `linear my-new [--since ISO]`
 - `linear issue <ID>`
