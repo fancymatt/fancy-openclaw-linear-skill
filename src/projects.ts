@@ -150,7 +150,7 @@ export async function listMilestones(teamId: string): Promise<Array<ProjectMiles
             nodes {
               id
               name
-              milestones(first: 100) {
+              projectMilestones(first: 100) {
                 nodes {
                   id
                   name

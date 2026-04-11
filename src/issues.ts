@@ -67,7 +67,6 @@ const ISSUE_FIELDS = `
     type
     color
     position
-    teamId
   }
   assignee {
     id
@@ -310,10 +309,12 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
 }
 
 export async function getMyIssues(filterStateNames?: string[]): Promise<Issue[]> {
-  const stateFilter = filterStateNames?.length ? ", filter: { state: { name: { in: $stateNames } } }" : "";
+  const hasFilter = filterStateNames && filterStateNames.length > 0;
+  const varDecl = hasFilter ? "($stateNames: [String!])" : "";
+  const stateFilter = hasFilter ? ", filter: { state: { name: { in: $stateNames } } }" : "";
   const data = await linearGraphQL<IssuesResponse>(
     `
-      query MyIssues($stateNames: [String!]) {
+      query MyIssues${varDecl} {
         viewer {
           assignedIssues(first: 100${stateFilter}) {
             nodes {

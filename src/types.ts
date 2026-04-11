@@ -10,7 +10,6 @@ export interface WorkflowState {
   type?: string | null;
   color?: string | null;
   position?: number | null;
-  teamId?: string | null;
 }
 
 export interface Comment {

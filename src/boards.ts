@@ -30,7 +30,7 @@ export async function getBoard(teamId: string): Promise<Record<string, Issue[]>>
     `
       query TeamBoard($teamId: String!) {
         team(id: $teamId) {
-          issues(first: 200, filter: { state: { type: { nin: [completed, canceled] } } }) {
+          issues(first: 200, filter: { state: { type: { nin: ["completed", "canceled"] } } }) {
             nodes {
               id
               identifier
