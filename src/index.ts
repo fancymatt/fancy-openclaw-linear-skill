@@ -190,6 +190,22 @@ async function main(): Promise<void> {
     }, program.opts<{ human?: boolean }>().human);
   });
 
+  program.command("edit").argument("<id>").option("--title <title>").option("--description <description>").action(async (id: string, options: { title?: string; description?: string }) => {
+    await runCommand(async () => {
+      if (!options.title && !options.description) {
+        throw new Error("At least one of --title or --description is required.");
+      }
+      const input: UpdateIssueInput = {};
+      if (options.title) {
+        input.title = options.title;
+      }
+      if (options.description) {
+        input.description = options.description;
+      }
+      return updateIssue(id, input);
+    }, program.opts<{ human?: boolean }>().human);
+  });
+
   program.command("assign").argument("<id>").argument("<user>").action(async (id: string, userName: string) => {
     await runCommand(async () => {
       const user = await findUserByName(userName);
