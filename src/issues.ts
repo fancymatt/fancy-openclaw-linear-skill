@@ -225,7 +225,7 @@ export async function createIssue(input: CreateIssueInput): Promise<Issue> {
     `,
     {
       input: {
-        teamId: input.teamId,
+        ...(input.teamId ? { teamId: input.teamId } : {}),
         title: input.title,
         description: input.description,
         projectId: input.projectId,

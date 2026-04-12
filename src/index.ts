@@ -141,7 +141,6 @@ async function main(): Promise<void> {
       await runCommand(async () => {
         const teamId = await resolveTeamId(team);
         const input: CreateIssueInput = {
-          teamId,
           title,
           description: options.description,
           projectId: options.project,
@@ -149,7 +148,10 @@ async function main(): Promise<void> {
           assigneeId: options.assignee,
           priority: parseOptionalNumber(options.priority),
           parentId: options.parent
-        };
+        } as CreateIssueInput;
+        if (teamId) {
+          input.teamId = teamId;
+        }
         return createIssue(input);
       }, program.opts<{ human?: boolean }>().human);
     });
