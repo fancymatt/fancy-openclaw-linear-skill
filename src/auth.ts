@@ -138,3 +138,46 @@ export async function checkAuth(): Promise<User> {
     throw error;
   }
 }
+
+/**
+ * Run diagnostics on Linear auth and CLI setup
+ * Checks: token validity, user identity, and basic read-only operation
+ */
+export async function linearDoctor(): Promise<void> {
+  console.log("🩺 Linear Doctor\n");
+  try {
+    const viewer = await checkAuth();
+    console.log(`✅ Auth valid\n`);
+    console.log(`   User: ${viewer.name} (${viewer.id})`);
+    console.log(`   Email: ${viewer.email}`);
+  } catch (err) {
+    console.log(`❌ Auth failed: ${err instanceof Error ? err.message : String(err)}\n`);
+    return;
+  }
+
+  try {
+    const { listTeams } = await import("./teams.js");
+    const teams = await listTeams();
+    console.log(`✅ Teams fetch successful (${teams.length} teams)\n`);
+  } catch (err) {
+    console.log(`❌ Teams fetch failed: ${err instanceof Error ? err.message : String(err)}\n`);
+  }
+
+  try {
+    const { getMyIssues } = await import("./issues.js");
+    const myIssues = await getMyIssues();
+    console.log(`✅ My issues fetch successful (${myIssues.length} issues)\n`);
+  } catch (err) {
+    console.log(`❌ My issues fetch failed: ${err instanceof Error ? err.message : String(err)}\n`);
+  }
+
+  // Token type detection
+  const apiKey = process.env.LINEAR_API_KEY || "none";
+  if (apiKey.startsWith("lin_oauth_")) {
+    console.log("✅ Using OAuth token (auto-refreshes every ~20h)\n");
+  } else if (apiKey.startsWith("lin_api_")) {
+    console.log("✅ Using personal API key (does not expire)\n");
+  } else {
+    console.log(`⚠️  Unknown token format: ${apiKey.substring(0, 20)}...\n`);
+  }
+}

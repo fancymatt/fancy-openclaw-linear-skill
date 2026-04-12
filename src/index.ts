@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 
 import { Command } from "commander";
 
-import { checkAuth } from "./auth";
+import { checkAuth, linearDoctor } from "./auth";
 import { getBoard, getComments, getReviewQueue, getStalled } from "./boards";
 import { handoffIssue } from "./handoff";
 import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNewIssues, updateIssue } from "./issues";
@@ -12,6 +12,7 @@ import { createBlockingRelation, listRelations, removeBlockingRelation } from ".
 import { findStateByName, getWorkflowStates } from "./states";
 import { listTeams, resolveTeamId } from "./teams";
 import { uploadFile } from "./upload";
+import { linearTest } from "./test";
 import { linearGraphQL } from "./client";
 import { CreateIssueInput, UpdateIssueInput } from "./types";
 
@@ -105,6 +106,9 @@ async function main(): Promise<void> {
   const auth = program.command("auth").description("Auth operations");
   auth.command("check").description("Verify auth").action(async () => {
     await runCommand(async () => ({ viewer: await checkAuth() }), program.opts<{ human?: boolean }>().human);
+  });
+  auth.command("doctor").description("Diagnose Linear auth and CLI setup").action(async () => {
+    await runCommand(async () => linearDoctor(), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("my-issues").action(async () => {
@@ -378,6 +382,10 @@ async function main(): Promise<void> {
       }
       return { identifier: issue.identifier, branchName: data.issue.branchName };
     }, program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("test").description("Run full round-trip test of Linear CLI").action(async () => {
+    await linearTest();
   });
 
   await program.parseAsync(process.argv);
