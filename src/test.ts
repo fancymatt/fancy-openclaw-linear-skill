@@ -1,6 +1,6 @@
 import { checkAuth } from "./auth";
 import { createIssue, updateIssue, addComment, getIssue } from "./issues";
-import { listTeams as listTeamsImport } from "./teams.js";
+import { resolveTeamId, listTeams } from "./teams";
 import { linearGraphQL } from "./client";
 import { LinearApiError } from "./client";
 
@@ -38,18 +38,28 @@ export async function linearTest(): Promise<void> {
   try {
     // Step 1: Create test issue
     console.log("1️⃣  Creating test issue...");
+    
+    // Resolve the first available team for test issues
+    const availableTeams = await listTeams();
+    const firstTeam = availableTeams[0];
+    const teamId = await resolveTeamId(firstTeam.key ?? "");
+
+    if (!teamId) {
+      throw new Error("No teams available to create test issue in.");
+    }
+    
     const createData = await linearGraphQL<CreatedIssueResponse>(`
-      mutation CreateTestIssue($title: String!) {
-        issueCreate(input: { title: $title }) {
+      mutation CreateTestIssue($title: String!, $teamId: String!) {
+        issueCreate(input: { title: $title, teamId: $teamId }) {
           success
-          issue {
-            id
-            identifier
-            title
-          }
+            issue {
+              id
+              identifier
+              title
+            }
         }
       }
-    `, { title: testTitle });
+    `, { title: testTitle, teamId });
 
     if (!createData.issueCreate?.success || !createData.issueCreate?.issue) {
       throw new Error("Issue creation failed");
@@ -84,13 +94,13 @@ export async function linearTest(): Promise<void> {
     console.log(`   ✅ Commented\n`);
 
     // Step 4: Update status
-    console.log("4️⃣  Updating status to 'Todo'...");
-    await updateIssue(issueId, { stateId: "todo" });
+    console.log("4️⃣  Updating status to 'Awaiting Deployment'...");
+    await updateIssue(issueId, { stateId: "Awaiting Deployment" });
     console.log(`   ✅ Updated\n`);
 
     // Step 5: Verify teams accessible
     console.log("5️⃣  Verifying teams access...");
-    const teams = await listTeamsImport();
+    const teams = await listTeams();
     console.log(`   ✅ Teams accessible: ${teams.length} teams\n`);
 
     // Step 6: Verify auth still valid
@@ -101,7 +111,7 @@ export async function linearTest(): Promise<void> {
     // Step 7: Cleanup
     console.log("7️⃣  Cleaning up...");
     try {
-      await updateIssue(issueId, { stateId: "done" });
+      await updateIssue(issueId, { stateId: "Done" });
       console.log(`   ✅ Marked test issue as Done\n`);
     } catch (err) {
       console.log(`   ⚠️  Cleanup warning: ${err instanceof Error ? err.message : String(err)}\n`);
@@ -144,7 +154,7 @@ export async function linearTest(): Promise<void> {
     console.log("  • List teams");
     console.log("  • Verify auth");
     if (issueIdentifier) {
-      console.log(`\nYou can delete the test issue if desired: ${issueIdentifier}`);
+      console.log(`\nYou can delete of test issue if desired: ${issueIdentifier}`);
     }
     process.exit(0);
   }
