@@ -125,6 +125,20 @@ Always build JSON with `jq -n --arg`, never with string interpolation.
 
 Examples: `references/graphql.md`
 
+## Token freshness (important for connector agents)
+
+If you were onboarded by the `fancy-openclaw-linear-connector`, your Linear token is an **OAuth token that refreshes every ~20 hours**. When it refreshes:
+
+1. The old token is **invalidated** — any cached copy will 401
+2. The connector writes the new token to `~/.openclaw/workspace-{you}/.secrets/linear.env`
+3. Your running session may still have the old token in memory
+
+**Rules:**
+- If you get a 401 from Linear, re-read the secrets file before retrying
+- Do NOT cache the token across sessions — always re-read from the file
+- The connector syncs the token on every refresh, so the file is always current
+- Personal API keys (lin_api_*) don't expire and don't have this problem — only OAuth tokens (lin_oauth_*) do
+
 ## Connector relationship
 
 This skill works on its own.
