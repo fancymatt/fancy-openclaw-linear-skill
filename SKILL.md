@@ -78,6 +78,7 @@ Your OAuth token was refreshed and the old one is invalidated. Re-read the secre
 - `linear states <TEAM> [--refresh]`
 - `linear status <ID> <STATE>`
 - `linear assign <ID> <USER>`
+- `linear delegate <ID> <AGENT>`
 - `linear priority <ID> <LEVEL>`
 - `linear handoff <ID> <REVIEWER> <COMMENT>`
 - `linear projects`
@@ -109,7 +110,72 @@ If you're a connector agent and you get a message starting with `[NEW TASK]`, fo
 5. **Do the work**, then comment on the issue with your deliverable
 6. **Done** — the connector handles session cleanup
 
+### Delegation is Required When Your Work is Done
+
+When you finish your piece of work on a ticket, you MUST delegate it forward. A comment without a delegation is an incomplete action — the ticket sits still and your work is never seen.
+
+Use `linear handoff`:
+
+```bash
+linear handoff AI-243 mckell "Please review and provide your perspective"
+```
+
+**Common mistakes agents make:**
+
+| Wrong | Right |
+|---|---|
+| Posting a comment like "delegating to Charles" and stopping | Run `linear handoff <ID> charles "<reason>"` |
+| @-mentioning another agent in a comment and assuming they will see it | Run `linear handoff` — @-mentions don't spawn sessions |
+| Leaving the delegate field as yourself after finishing | Always delegate forward (to reviewer, requester, or Astrid if unsure) |
+| Marking the ticket Done when you meant "I'm done with my part" | Use `linear handoff` to the next owner; only mark Done if the whole task is complete |
+
+**Where to delegate:**
+
+- **Back to your supervisor** for review of your work
+- **Back to the requester** for delivery
+- **To Astrid (CPO)** if you're unsure who's next
+
+**Never leave the delegate field pointing to yourself after you've completed your work.** Tagging someone in a comment is not a substitute for setting the delegate field.
+
+**Multi-agent delegation pattern** (for connector agents like Charles, Mckell, Astrid):
+   - You receive a task via webhook/delegation
+   - You process your part
+   - You delegate to the next agent using `linear handoff`
+   - Do NOT mark the ticket Done unless the task is fully complete for all agents
+   - The workflow is: Agent A → Agent B → Agent C → ... until the task returns to the originator
+
+
 Do NOT use the `linear-access` skill or try to manually source tokens. Just run `linear` commands directly.
+
+## Images in Comments
+
+Linear comments that include images render them as markdown image links:
+
+```markdown
+![](https://uploads.linear.app/<workspace-id>/<asset-id>/<filename>)
+```
+
+**The `linear comments` CLI prints the raw markdown, including these links.** Agents need to actually fetch and view the image to understand the comment — do not skip over image links or assume you can infer what they show.
+
+### How to view an image from a comment
+
+You have two good options:
+
+**Option 1: Use the `image` tool directly on the URL.** If your tool supports image URLs (most OpenClaw vision tools do), pass the `uploads.linear.app` URL as the `image` argument. The tool will fetch and analyze it.
+
+**Option 2: Download first, then analyze.** Some flows require a local file. Download with curl:
+
+```bash
+curl -L -o /tmp/linear-img.png 'https://uploads.linear.app/<workspace-id>/<asset-id>/<filename>'
+```
+
+The uploads.linear.app URLs are publicly accessible (no auth required), so plain `curl` works.
+
+### Rules
+
+- **Never ignore an image link.** If a comment contains `![](...)`, that image is part of the task context. View it before responding.
+- **Reference the image in your response.** If you viewed an image and it changed your answer, say so ("Looked at the screenshot — I see the issue is X").
+- **Images are not optional context.** A human who attached a screenshot did so because the screenshot IS the question. Missing it makes your response incomplete.
 
 ## Common workflows
 
