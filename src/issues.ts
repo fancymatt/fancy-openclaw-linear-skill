@@ -270,7 +270,8 @@ export async function updateIssue(id: string, input: UpdateIssueInput): Promise<
 }
 
 export async function addComment(issueId: string, body: string): Promise<{ issueId: string; body: string; bodyFile?: string }> {
-  let finalBody = body;
+  // Unescape literal \n sequences that shell interpolation often produces
+  let finalBody = body.replace(/\\n/g, "\n");
   let tempFilePath: string | undefined;
 
   if (Buffer.byteLength(body, "utf8") > 4 * 1024) {
@@ -364,6 +365,49 @@ export async function getMyNewIssues(updatedSinceIso?: string): Promise<Issue[]>
   );
 
   return data.viewer.assignedIssues.nodes;
+}
+
+export async function getMyQueue(projectName?: string): Promise<Issue[]> {
+  const data = await linearGraphQL<IssuesResponse>(
+    `
+      query MyQueue {
+        viewer {
+          assignedIssues(first: 100, filter: { state: { type: { in: [unstarted, started] } } }) {
+            nodes {
+              id
+              identifier
+              title
+              updatedAt
+              priority
+              state { id name type }
+              assignee { id name email }
+              team { id key name }
+              project { id name }
+            }
+          }
+        }
+      }
+    `
+  );
+
+  let issues = data.viewer.assignedIssues.nodes
+    .filter((issue) => issue.state?.name?.toLowerCase() !== 'blocked');
+
+  if (projectName) {
+    issues = issues.filter((issue) =>
+      issue.project?.name?.toLowerCase().includes(projectName.toLowerCase())
+    );
+  }
+
+  // Sort: priority asc (0/null=no priority treated as lowest=5), then updatedAt desc
+  issues.sort((a, b) => {
+    const pa = !a.priority || a.priority === 0 ? 5 : a.priority;
+    const pb = !b.priority || b.priority === 0 ? 5 : b.priority;
+    if (pa !== pb) return pa - pb;
+    return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '');
+  });
+
+  return issues;
 }
 
 export async function findUserByName(name: string): Promise<{ id: string; name: string; email?: string | null }> {

@@ -6,7 +6,7 @@ import { Command } from "commander";
 import { checkAuth, linearDoctor } from "./auth";
 import { getBoard, getComments, getReviewQueue, getStalled } from "./boards";
 import { handoffIssue } from "./handoff";
-import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNewIssues, updateIssue } from "./issues";
+import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue } from "./issues";
 import { attachIssueToMilestone, attachIssueToProject, createMilestone, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
 import { createBlockingRelation, listRelations, removeBlockingRelation } from "./relations";
 import { findStateByName, getWorkflowStates } from "./states";
@@ -123,6 +123,20 @@ async function main(): Promise<void> {
     await runCommand(async () => getMyNewIssues(options.since), program.opts<{ human?: boolean }>().human);
   });
 
+  program.command("my-queue")
+    .option("--project <name>", "Filter by project name")
+    .action(async (options: { project?: string }) => {
+      await runCommand(async () => getMyQueue(options.project), program.opts<{ human?: boolean }>().human);
+    });
+
+  program.command("my-next").action(async () => {
+    await runCommand(async () => {
+      const queue = await getMyQueue();
+      if (queue.length === 0) return { message: "Queue is empty — nothing to do." };
+      return queue[0];
+    }, program.opts<{ human?: boolean }>().human);
+  });
+
   program.command("issue").argument("<id>").action(async (id: string) => {
     await runCommand(async () => getIssue(id), program.opts<{ human?: boolean }>().human);
   });
@@ -210,6 +224,13 @@ async function main(): Promise<void> {
     await runCommand(async () => {
       const user = await findUserByName(userName);
       return updateIssue(id, { assigneeId: user.id });
+    }, program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("delegate").argument("<id>").argument("<agent>").action(async (id: string, agentName: string) => {
+    await runCommand(async () => {
+      const user = await findUserByName(agentName);
+      return updateIssue(id, { delegateId: user.id });
     }, program.opts<{ human?: boolean }>().human);
   });
 
