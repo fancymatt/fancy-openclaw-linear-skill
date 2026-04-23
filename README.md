@@ -38,27 +38,20 @@ Linear → fancy-openclaw-linear-connector → OpenClaw agent
 
 ## Install
 
-Supported install modes:
-
-### Option 1: Clone directly into your skills directory
+**Standard install (single-host, multiple agents):** Clone once and symlink into each agent workspace. This ensures all agents share one binary — a single `npm run build` in the canonical checkout propagates to every agent immediately.
 
 ```bash
-cd ~/.openclaw/workspace/skills
-git clone git@github.com:fancymatt/fancy-openclaw-linear-skill.git
-cd fancy-openclaw-linear-skill
+# 1. Clone once to a shared location
+git clone git@github.com:fancymatt/fancy-openclaw-linear-skill.git ~/Code/openclaw-linear/fancy-openclaw-linear-skill
+cd ~/Code/openclaw-linear/fancy-openclaw-linear-skill
 npm install
 npm run build
+
+# 2. Symlink into each agent workspace (repeat per agent)
+ln -s ~/Code/openclaw-linear/fancy-openclaw-linear-skill ~/.openclaw/workspace-{agent}/skills/linear
 ```
 
-### Option 2: Symlink during development
-
-```bash
-git clone git@github.com:fancymatt/fancy-openclaw-linear-skill.git ~/Code/fancy-openclaw-linear-skill
-cd ~/Code/fancy-openclaw-linear-skill
-npm install
-npm run build
-ln -s ~/Code/fancy-openclaw-linear-skill ~/.openclaw/workspace/skills/fancy-openclaw-linear-skill
-```
+**Do not clone into individual agent workspaces.** Independent copies diverge silently and require per-workspace rebuilds on every update.
 
 ## Auth Setup
 
