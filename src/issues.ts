@@ -73,6 +73,11 @@ const ISSUE_FIELDS = `
     name
     email
   }
+  delegate {
+    id
+    name
+    email
+  }
   project {
     id
     name
@@ -124,7 +129,7 @@ const ISSUE_FIELDS = `
       }
     }
   }
-  comments(last: 5, orderBy: createdAt) {
+  comments(last: 50, orderBy: createdAt) {
     nodes {
       id
       body

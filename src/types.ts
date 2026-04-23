@@ -62,6 +62,7 @@ export interface Issue {
   } | null;
   state?: WorkflowState | null;
   assignee?: User | null;
+  delegate?: User | null;
   project?: {
     id: string;
     name: string;
@@ -94,6 +95,7 @@ export interface UpdateIssueInput {
   description?: string;
   stateId?: string;
   assigneeId?: string;
+  delegateId?: string;
   priority?: number;
   projectId?: string;
   projectMilestoneId?: string;
