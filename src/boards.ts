@@ -112,7 +112,7 @@ export async function getStalled(days = 2): Promise<Issue[]> {
   return data.viewer.assignedIssues.nodes;
 }
 
-export async function getComments(issueId: string, all = false): Promise<Comment[]> {
+export async function getComments(issueId: string, all = true): Promise<Comment[]> {
   const data = await linearGraphQL<CommentsResponse>(
     `
       query IssueComments($id: String!, $count: Int!) {
