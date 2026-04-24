@@ -36,7 +36,7 @@ export async function handoffIssue(
   }
 
   try {
-    await updateIssue(issueId, { assigneeId: reviewer.id, stateId: reviewState.id });
+    await updateIssue(issueId, { assigneeId: reviewer.id, stateId: reviewState.id, delegateId: null });
   } catch {
     throw new Error(
       `Handoff failed at step issueUpdate for ${issue.identifier}. Comment may already be posted. Recovery: linear update-issue ${issue.identifier} --assignee "${reviewer.id}" --state "${reviewState.name}" --team ${teamId}`

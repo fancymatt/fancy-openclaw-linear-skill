@@ -223,7 +223,7 @@ async function main(): Promise<void> {
   program.command("assign").argument("<id>").argument("<user>").action(async (id: string, userName: string) => {
     await runCommand(async () => {
       const user = await findUserByName(userName);
-      return updateIssue(id, { assigneeId: user.id });
+      return updateIssue(id, { assigneeId: user.id, delegateId: null });
     }, program.opts<{ human?: boolean }>().human);
   });
 
