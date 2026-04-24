@@ -298,7 +298,7 @@ async function main(): Promise<void> {
     await runCommand(async () => getStalled(days ? Number(days) : 2), program.opts<{ human?: boolean }>().human);
   });
   program.command("comments").argument("<id>").option("--all").action(async (id: string, options: { all?: boolean }) => {
-    await runCommand(async () => getComments(id, Boolean(options.all)), program.opts<{ human?: boolean }>().human);
+    await runCommand(async () => getComments(id, options.all !== false), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("upload").argument("<file>").option("--comment <issueId>").action(async (file: string, options: { comment?: string }) => {
