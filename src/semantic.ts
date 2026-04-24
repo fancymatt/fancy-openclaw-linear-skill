@@ -99,14 +99,29 @@ export async function considerWork(
   const self = await getSelfUser();
   const state = await findSemanticState(teamId, "thinking");
 
-  await updateIssue(issueId, {
+  // updateIssue returns the fresh (post-mutation) issue, avoiding a re-fetch
+  const updatedIssue = await updateIssue(issueId, {
     stateId: state.id,
     delegateId: self.id,
     assigneeId: null,
   });
 
-  // Fetch context after state change so the agent gets current issue info
-  const context = await observeIssue(issueId);
+  // Only fetch comments — issue data comes from updateIssue's built-in re-fetch
+  const comments = await getComments(updatedIssue.id);
+  const context: ObserveResult = {
+    identifier: updatedIssue.identifier,
+    title: updatedIssue.title,
+    description: updatedIssue.description ?? "",
+    state: { name: updatedIssue.state?.name ?? "Unknown" },
+    priority: updatedIssue.priority ?? 0,
+    assignee: updatedIssue.assignee ? { name: updatedIssue.assignee.name } : null,
+    delegate: updatedIssue.delegate ? { name: updatedIssue.delegate.name } : null,
+    comments: comments.map((c) => ({
+      body: c.body,
+      createdAt: c.createdAt ?? "",
+      user: c.user ? { name: c.user.name } : { name: "Unknown" },
+    })),
+  };
 
   return {
     command: "considerWork",
