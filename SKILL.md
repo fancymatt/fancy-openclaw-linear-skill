@@ -62,6 +62,15 @@ All write commands accept `--comment "<msg>"` or `--comment-file <path>` for com
 4. **Structural issues get their own tickets.** Don't bury observations as footnotes.
 5. **Move tickets forward immediately.** New tickets → delegate to appropriate agent via the semantic commands.
 
+### Closing Rules — Non-Negotiable
+
+6. **The agent who does the work cannot close the ticket.** `complete` must only be called by a reviewer — never by the agent who implemented the work. Once you've done the work, use `handoffWork` or `needsHuman` to pass it to a reviewer. The reviewer calls `complete`.
+7. **Do not close a ticket with open flagged issues.** If a reviewer raised an issue in a comment, it must be resolved in one of three ways before `complete` is called:
+   - A new ticket was created to track it, OR
+   - The original poster confirmed it can be ignored, OR
+   - The fix was implemented and confirmed.
+   Silence is not resolution. A flagged issue with no explicit response blocks `complete`.
+
 ### Deprecated Commands (Human Use Only)
 
 The following commands still work but print deprecation warnings for agents:
