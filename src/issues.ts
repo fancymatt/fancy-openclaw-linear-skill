@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { linearGraphQL } from "./client";
+import { getSelfUser } from "./auth";
 import { CreateIssueInput, Issue, UpdateIssueInput } from "./types";
 
 interface IssueResponse {
@@ -372,31 +373,40 @@ export async function getMyNewIssues(updatedSinceIso?: string): Promise<Issue[]>
   return data.viewer.assignedIssues.nodes;
 }
 
+interface DelegatedIssuesResponse {
+  issues: {
+    nodes: Issue[];
+  };
+}
+
 export async function getMyQueue(projectName?: string): Promise<Issue[]> {
-  const data = await linearGraphQL<IssuesResponse>(
+  const self = await getSelfUser();
+  const data = await linearGraphQL<DelegatedIssuesResponse>(
     `
-      query MyQueue {
-        viewer {
-          assignedIssues(first: 100, filter: { state: { type: { in: [unstarted, started] } } }) {
-            nodes {
-              id
-              identifier
-              title
-              updatedAt
-              priority
-              state { id name type }
-              assignee { id name email }
-              team { id key name }
-              project { id name }
-            }
+      query MyQueue($delegateId: ID!) {
+        issues(first: 100, filter: {
+          delegate: { id: { eq: $delegateId } },
+          state: { type: { nin: ["completed", "canceled"] } }
+        }) {
+          nodes {
+            id
+            identifier
+            title
+            updatedAt
+            priority
+            state { id name type }
+            assignee { id name email }
+            delegate { id name email }
+            team { id key name }
+            project { id name }
           }
         }
       }
-    `
+    `,
+    { delegateId: self.id }
   );
 
-  let issues = data.viewer.assignedIssues.nodes
-    .filter((issue) => issue.state?.name?.toLowerCase() !== 'blocked');
+  let issues = data.issues.nodes;
 
   if (projectName) {
     issues = issues.filter((issue) =>

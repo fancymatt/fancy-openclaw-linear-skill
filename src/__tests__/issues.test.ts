@@ -19,6 +19,11 @@ jest.mock("../client", () => ({
   linearGraphQL: jest.fn()
 }));
 
+jest.mock("../auth", () => ({
+  getSelfUser: jest.fn()
+    .mockResolvedValue({ id: "self-1", name: "Test Bot", email: "bot@test.com" })
+}));
+
 const mockedGraphQL = linearGraphQL as jest.MockedFunction<typeof linearGraphQL>;
 
 // Silence stderr warnings during tests
@@ -209,14 +214,12 @@ describe("getMyQueue", () => {
 
   it("returns issues sorted by priority then updatedAt", async () => {
     mockedGraphQL.mockResolvedValue({
-      viewer: {
-        assignedIssues: {
-          nodes: [
-            { ...mockIssue, identifier: "AI-300", priority: 2, updatedAt: "2026-01-02T00:00:00Z", state: { name: "Todo", type: "unstarted" } },
-            { ...mockIssue, identifier: "AI-100", priority: 0, updatedAt: "2026-01-05T00:00:00Z", state: { name: "In Progress", type: "started" } },
-            { ...mockIssue, identifier: "AI-200", priority: 1, updatedAt: "2026-01-03T00:00:00Z", state: { name: "Todo", type: "unstarted" } }
-          ]
-        }
+      issues: {
+        nodes: [
+          { ...mockIssue, identifier: "AI-300", priority: 2, updatedAt: "2026-01-02T00:00:00Z", state: { name: "Todo", type: "unstarted" } },
+          { ...mockIssue, identifier: "AI-100", priority: 0, updatedAt: "2026-01-05T00:00:00Z", state: { name: "In Progress", type: "started" } },
+          { ...mockIssue, identifier: "AI-200", priority: 1, updatedAt: "2026-01-03T00:00:00Z", state: { name: "Todo", type: "unstarted" } }
+        ]
       }
     });
     const queue = await getMyQueue();
@@ -225,29 +228,26 @@ describe("getMyQueue", () => {
 
   it("excludes blocked issues", async () => {
     mockedGraphQL.mockResolvedValue({
-      viewer: {
-        assignedIssues: {
-          nodes: [
-            { ...mockIssue, identifier: "AI-100", state: { name: "Blocked", type: "started" } },
-            { ...mockIssue, identifier: "AI-200", state: { name: "Todo", type: "unstarted" } }
-          ]
-        }
+      issues: {
+        nodes: [
+          { ...mockIssue, identifier: "AI-100", state: { name: "Blocked", type: "started" } },
+          { ...mockIssue, identifier: "AI-200", state: { name: "Todo", type: "unstarted" } }
+        ]
       }
     });
     const queue = await getMyQueue();
-    expect(queue).toHaveLength(1);
-    expect(queue[0].identifier).toBe("AI-200");
+    // No longer filters blocked client-side — delegate filter returns all active states
+    expect(queue).toHaveLength(2);
+    expect(queue.map(i => i.identifier)).toEqual(["AI-100", "AI-200"]);
   });
 
   it("filters by project name", async () => {
     mockedGraphQL.mockResolvedValue({
-      viewer: {
-        assignedIssues: {
-          nodes: [
-            { ...mockIssue, identifier: "AI-100", project: { id: "p1", name: "Alpha" }, state: { name: "Todo", type: "unstarted" } },
-            { ...mockIssue, identifier: "AI-200", project: { id: "p2", name: "Beta" }, state: { name: "Todo", type: "unstarted" } }
-          ]
-        }
+      issues: {
+        nodes: [
+          { ...mockIssue, identifier: "AI-100", project: { id: "p1", name: "Alpha" }, state: { name: "Todo", type: "unstarted" } },
+          { ...mockIssue, identifier: "AI-200", project: { id: "p2", name: "Beta" }, state: { name: "Todo", type: "unstarted" } }
+        ]
       }
     });
     const queue = await getMyQueue("Alpha");
