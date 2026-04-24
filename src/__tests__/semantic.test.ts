@@ -33,6 +33,9 @@ jest.mock("../boards", () => ({
   getComments: jest.fn().mockResolvedValue([]),
 }));
 
+import { getComments } from "../boards";
+const mockGetComments = getComments as jest.MockedFunction<typeof getComments>;
+
 jest.mock("../states", () => ({
   ...jest.requireActual("../states"),
   findSemanticState: jest.fn(),
@@ -62,6 +65,7 @@ const doneState = { id: "state-done", name: "Done", type: "completed" };
 
 beforeEach(() => {
   jest.resetAllMocks();
+  mockGetComments.mockResolvedValue([]);
   mockGetIssue.mockResolvedValue(baseIssue);
   mockGetSelfUser.mockResolvedValue({ id: "user-igor", name: "Igor (Back End Dev)", email: "igor@test.com" });
   mockFindUserByName.mockImplementation(async (name: string) => {
@@ -98,7 +102,7 @@ describe("considerWork", () => {
       delegateId: "user-igor",
       assigneeId: null,
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       command: "considerWork",
       issueId: "AI-100",
       state: "In Progress",
@@ -106,6 +110,8 @@ describe("considerWork", () => {
       assignee: null,
       commentPosted: false,
     });
+    expect(result.context).toBeDefined();
+    expect(result.context?.identifier).toBe("AI-100");
   });
 
   it("does not post any comment", async () => {
