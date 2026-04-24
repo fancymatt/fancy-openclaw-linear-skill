@@ -89,6 +89,115 @@ You should see your Linear user name and email printed. If not, see `references/
 3. `~/.openclaw/workspace-{agent}/.secrets/linear.env` (key must match `linear` + `api_key`/`developer_token`/`token`)
 4. `{cwd}/.secrets/linear.env` (fallback)
 
+## Command Reference
+
+### Semantic Workflow Commands (Agent Standard)
+
+| Command | Description |
+|---|---|
+| `linear considerWork <id>` | Mark issue as being considered (status → Thinking, delegate → self, assignee cleared). Returns issue context. |
+| `linear beginWork <id>` | Begin actively working (status → Doing). Idempotent. |
+| `linear handoffWork <id> <agent> [--comment <msg>] [--comment-file <path>]` | Hand off task to another agent. Sets delegate, clears assignee, posts comment. |
+| `linear complete <id> [--comment <msg>] [--comment-file <path>]` | Mark task as Done, clear delegate. |
+| `linear needsHuman <id> <assignee> [--comment <msg>] [--comment-file <path>]` | Escalate to human. Sets assignee, clears delegate. |
+| `linear refuseWork <id> <delegate> [--comment <msg>] [--comment-file <path>]` | Refuse task and delegate to another agent. |
+| `linear observeIssue <id> [--all]` | Read-only observation of an issue. No ownership change. `--all` includes all comments. |
+
+### Issue Management
+
+| Command | Description |
+|---|---|
+| `linear issue <id>` | View issue details |
+| `linear create <team> <title> [--description <desc>] [--project <id>] [--milestone <id>] [--assignee <id>] [--priority <n>] [--parent <id>]` | Create a new issue |
+| `linear edit <id> --title <title> --description <desc>` | Edit issue title and/or description |
+| `linear delete <id>` | Delete an issue |
+| `linear search <query> [--team <team>] [--limit <n>]` | Search issues by text |
+| `linear branch <id>` | Get the branch name associated with an issue |
+| `linear priority <id> <level>` | Set issue priority |
+| `linear comments <id> [--all]` | Read comments on an issue |
+| `linear comment <id> <body>` | Post a comment to an issue |
+| `linear comment <id> --body-file <path>` | Post a comment from a file |
+| `linear delete-comment <commentId>` | Delete a comment |
+| `linear upload <file> --comment <issueId>` | Upload a file attachment, optionally linking to a comment |
+
+### Labels
+
+| Command | Description |
+|---|---|
+| `linear labels [--team <team>]` | List available labels for a team |
+| `linear label <id> <labelName...> [--team <team>]` | Add label(s) to an issue. Case-insensitive. Appends to existing labels. |
+| `linear unlabel <id> <labelName...> [--team <team>]` | Remove label(s) from an issue. Case-insensitive. |
+
+### Assignment & Delegation (Raw — Deprecated for Agents)
+
+| Command | Description |
+|---|---|
+| `linear assign <id> <user>` | Assign issue to a human user. Clears delegate. |
+| `linear delegate <id> <agent>` | Delegate issue to an agent. |
+| `linear handoff <id> <reviewer> [comment] [--comment-file <path>]` | Delegate + post comment atomically. |
+| `linear status <id> <state> [--team <team>]` | Change issue status. |
+
+> ⚠️ These commands print deprecation warnings. Use semantic commands instead.
+
+### Hierarchy & Relations
+
+| Command | Description |
+|---|---|
+| `linear subtask <team> <title> --parent <id>` | Create a subtask under a parent issue |
+| `linear children <id>` | View child issues |
+| `linear block <id> --blocked-by <issueId>` | Create a blocking relation |
+| `linear unblock <id> --blocked-by <issueId>` | Remove a blocking relation |
+| `linear relations <id>` | View relations for an issue |
+
+### Projects & Milestones
+
+| Command | Description |
+|---|---|
+| `linear projects` | List all projects |
+| `linear project-detail <name>` | View project details |
+| `linear project-issues <name>` | List issues in a project |
+| `linear project-attach <id> <name>` | Attach an issue to a project |
+| `linear milestones <team>` | List milestones for a team |
+| `linear milestone-create <project> <name> <targetDate>` | Create a milestone |
+| `linear milestone-attach <id> <name>` | Attach an issue to a milestone |
+
+### Agent Workflows (Personal Queue)
+
+| Command | Description |
+|---|---|
+| `linear my-issues` | All issues assigned to me |
+| `linear my-todos` | Issues in Todo state |
+| `linear my-new [--since <iso>]` | Recently updated issues (default: last 24h) |
+| `linear my-queue [--project <name>]` | Issues in Todo, filtered by project optionally |
+| `linear my-next` | Highest-priority pending issue |
+| `linear my-blocked [--limit <n>]` | Issues assigned to me in Blocked state |
+| `linear review-queue` | Issues needing review |
+| `linear stalled [days]` | Issues inactive for N days (default: 2) |
+| `linear standup` | Daily standup summary |
+
+### Notifications & Urgency
+
+| Command | Description |
+|---|---|
+| `linear notifications [--limit <n>]` | Unread notifications |
+| `linear urgent [--limit <n>]` | High-priority issues (priority ≤ 2) |
+
+### Organization & Metadata
+
+| Command | Description |
+|---|---|
+| `linear teams [--refresh]` | List all teams |
+| `linear states <team> [--refresh]` | List workflow states for a team |
+| `linear board <team>` | View team board (issues grouped by state) |
+
+### Auth & Diagnostics
+
+| Command | Description |
+|---|---|
+| `linear auth check` | Verify authentication |
+| `linear auth doctor` | Diagnose Linear auth and CLI setup |
+| `linear test` | Run full round-trip integration test |
+
 ## Docs
 
 - `SKILL.md` — agent-facing skill entrypoint and quick reference

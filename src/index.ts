@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import { Command } from "commander";
 
 import { checkAuth, linearDoctor } from "./auth";
+import { getMyBlocked } from "./blocked";
 import { getBoard, getComments, getReviewQueue, getStalled } from "./boards";
 import { handoffIssue } from "./handoff";
 import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue } from "./semantic";
@@ -13,6 +14,9 @@ import { createBlockingRelation, listRelations, removeBlockingRelation } from ".
 import { findStateByName, getWorkflowStates } from "./states";
 import { listTeams, resolveTeamId } from "./teams";
 import { uploadFile } from "./upload";
+import { deleteIssue, deleteComment } from "./delete";
+import { listLabels, addLabels, removeLabels } from "./labels";
+import { searchIssues } from "./search";
 import { linearTest } from "./test";
 import { linearGraphQL } from "./client";
 import { CreateIssueInput, UpdateIssueInput } from "./types";
@@ -439,6 +443,45 @@ async function main(): Promise<void> {
 
   program.command("test").description("Run full round-trip test of Linear CLI").action(async () => {
     await linearTest();
+  });
+
+  // --- Delete commands ---
+
+  program.command("delete").argument("<id>").description("Delete an issue").action(async (id: string) => {
+    await runCommand(async () => deleteIssue(id), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("delete-comment").argument("<commentId>").description("Delete a comment").action(async (commentId: string) => {
+    await runCommand(async () => deleteComment(commentId), program.opts<{ human?: boolean }>().human);
+  });
+
+  // --- Label commands ---
+
+  program.command("labels").option("--team <team>").description("List available labels for a team").action(async (options: { team?: string }) => {
+    await runCommand(async () => listLabels(options.team), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("label").argument("<id>").argument("<labelName...>").option("--team <team>").description("Add label(s) to an issue").action(async (id: string, labelNames: string[], options: { team?: string }) => {
+    await runCommand(async () => addLabels(id, labelNames, options.team), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("unlabel").argument("<id>").argument("<labelName...>").option("--team <team>").description("Remove label(s) from an issue").action(async (id: string, labelNames: string[], options: { team?: string }) => {
+    await runCommand(async () => removeLabels(id, labelNames, options.team), program.opts<{ human?: boolean }>().human);
+  });
+
+  // --- Search command ---
+
+  program.command("search").argument("<query>").option("--team <team>").option("--limit <n>").description("Search issues by text").action(async (query: string, options: { team?: string; limit?: string }) => {
+    await runCommand(async () => {
+      const teamId = options.team ? await resolveTeamId(options.team) : undefined;
+      return searchIssues(query, teamId, options.limit ? Number(options.limit) : undefined);
+    }, program.opts<{ human?: boolean }>().human);
+  });
+
+  // --- My blocked ---
+
+  program.command("my-blocked").option("--limit <n>").description("Show issues assigned to me that are Blocked").action(async (options: { limit?: string }) => {
+    await runCommand(async () => getMyBlocked(options.limit ? Number(options.limit) : undefined), program.opts<{ human?: boolean }>().human);
   });
 
   // --- Semantic commands ---
