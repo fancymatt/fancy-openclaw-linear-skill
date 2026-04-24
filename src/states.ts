@@ -12,8 +12,8 @@ import { WorkflowState } from "./types";
 export const SEMANTIC_STATE_MAP: Record<string, string> = {
   backlog: "Backlog",
   todo: "Todo",
-  thinking: "In Progress",
-  doing: "In Progress",
+  thinking: "Thinking",
+  doing: "Doing",
   done: "Done",
   invalid: "Invalid",
 };
