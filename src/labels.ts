@@ -14,18 +14,15 @@ interface LabelsResponse {
 
 export async function listLabels(team?: string): Promise<Array<{ id: string; name: string; color: string }>> {
   const teamId = team ? await resolveTeamId(team) : undefined;
-  const teamClause = teamId ? `team(id: "${teamId}")` : "teams(first: 1) { nodes { id ...TeamLabels } }";
+  const teamClause = teamId
+    ? `team(id: "${teamId}") { labels(first: 100) { nodes { id name color } } }`
+    : `teams(first: 1) { nodes { labels(first: 100) { nodes { id name color } } } }`;
 
   const data = await linearGraphQL<{
-    teams?: { nodes: Array<{ id: string; labels: LabelsResponse["team"]["labels"] }> };
+    teams?: { nodes: Array<{ labels: LabelsResponse["team"]["labels"] }> };
     team?: LabelsResponse["team"];
   }>(
     `
-      fragment TeamLabels on Team {
-        labels(first: 100) {
-          nodes { id name color }
-        }
-      }
       query ListLabels {
         ${teamClause}
       }

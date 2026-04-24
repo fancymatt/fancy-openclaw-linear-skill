@@ -23,7 +23,7 @@ describe("searchIssues", () => {
 
   it("returns matching issues", async () => {
     mockedGraphQL.mockResolvedValue({
-      issueSearch: {
+      issues: {
         nodes: [mockSearchResult("AI-100"), mockSearchResult("AI-200")],
         pageInfo: { hasNextPage: false, endCursor: null }
       }
@@ -35,7 +35,7 @@ describe("searchIssues", () => {
 
   it("returns empty array when no results", async () => {
     mockedGraphQL.mockResolvedValue({
-      issueSearch: {
+      issues: {
         nodes: [],
         pageInfo: { hasNextPage: false, endCursor: null }
       }
@@ -46,7 +46,7 @@ describe("searchIssues", () => {
 
   it("passes teamId filter when provided", async () => {
     mockedGraphQL.mockResolvedValue({
-      issueSearch: {
+      issues: {
         nodes: [mockSearchResult("AI-100")],
         pageInfo: { hasNextPage: false, endCursor: null }
       }
@@ -60,7 +60,7 @@ describe("searchIssues", () => {
 
   it("respects limit parameter", async () => {
     mockedGraphQL.mockResolvedValue({
-      issueSearch: {
+      issues: {
         nodes: [],
         pageInfo: { hasNextPage: false, endCursor: null }
       }

@@ -1,7 +1,7 @@
 import { linearGraphQL } from "./client";
 
 interface SearchResponse {
-  issueSearch: {
+  issues: {
     nodes: Array<{
       id: string;
       identifier: string;
@@ -15,14 +15,14 @@ interface SearchResponse {
   };
 }
 
-export async function searchIssues(query: string, teamId?: string, limit?: number): Promise<SearchResponse["issueSearch"]["nodes"]> {
+export async function searchIssues(query: string, teamId?: string, limit?: number): Promise<SearchResponse["issues"]["nodes"]> {
   const first = limit ?? 25;
-  const teamFilter = teamId ? `, filter: { team: { id: { eq: $teamId } } }` : "";
+  const teamFilter = teamId ? `, team: { id: { eq: $teamId } }` : "";
 
   const data = await linearGraphQL<SearchResponse>(
     `
       query SearchIssues($query: String!, $first: Int!${teamId ? ", $teamId: ID" : ""}) {
-        issueSearch(query: $query, first: $first${teamFilter}) {
+        issues(first: $first, filter: { title: { containsIgnoreCase: $query }${teamFilter} }) {
           nodes {
             id
             identifier
@@ -39,5 +39,5 @@ export async function searchIssues(query: string, teamId?: string, limit?: numbe
     { query, first, teamId }
   );
 
-  return data.issueSearch.nodes;
+  return data.issues.nodes;
 }
