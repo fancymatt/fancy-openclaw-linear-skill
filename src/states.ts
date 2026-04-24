@@ -5,6 +5,19 @@ import path from "node:path";
 import { linearGraphQL } from "./client";
 import { WorkflowState } from "./types";
 
+/**
+ * Maps semantic state names (used by agent commands) to actual Linear workflow state names.
+ * This allows agents to use a simplified 6-state model without changing the Linear workspace.
+ */
+export const SEMANTIC_STATE_MAP: Record<string, string> = {
+  backlog: "Backlog",
+  todo: "Todo",
+  thinking: "In Progress",
+  doing: "In Progress",
+  done: "Done",
+  invalid: "Invalid",
+};
+
 const STATE_ALIASES: Record<string, string> = {
   review: "Needs Review",
   done: "Done",
@@ -92,4 +105,18 @@ export async function findStateByName(teamId: string, alias: string): Promise<Wo
   }
 
   return state;
+}
+
+/**
+ * Resolve a semantic state name to an actual Linear workflow state.
+ * Uses SEMANTIC_STATE_MAP to translate, then falls back to findStateByName.
+ */
+export async function findSemanticState(teamId: string, semanticName: string): Promise<WorkflowState> {
+  const mappedName = SEMANTIC_STATE_MAP[semanticName.toLowerCase()];
+  if (!mappedName) {
+    throw new Error(
+      `Unknown semantic state "${semanticName}". Valid options: ${Object.keys(SEMANTIC_STATE_MAP).join(", ")}`
+    );
+  }
+  return findStateByName(teamId, mappedName);
 }

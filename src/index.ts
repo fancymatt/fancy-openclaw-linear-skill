@@ -6,6 +6,7 @@ import { Command } from "commander";
 import { checkAuth, linearDoctor } from "./auth";
 import { getBoard, getComments, getReviewQueue, getStalled } from "./boards";
 import { handoffIssue } from "./handoff";
+import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue } from "./semantic";
 import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue } from "./issues";
 import { attachIssueToMilestone, attachIssueToProject, createMilestone, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
 import { createBlockingRelation, listRelations, removeBlockingRelation } from "./relations";
@@ -96,6 +97,15 @@ async function runCommand(handler: () => Promise<unknown>, human = false): Promi
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);
     process.exitCode = 1;
+  }
+}
+
+const DEPRECATION_MSG =
+  "⚠️  This command is deprecated for agent use. Use semantic commands: considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman. Pass --silence-deprecation to suppress.";
+
+function deprecationWarn(cmd: string, noWarn?: boolean): void {
+  if (!noWarn) {
+    process.stderr.write(`${DEPRECATION_MSG}\n`);
   }
 }
 
@@ -192,7 +202,8 @@ async function main(): Promise<void> {
     }, program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("status").argument("<id>").argument("<state>").option("--team <teamId>").action(async (id: string, state: string, options: { team?: string }) => {
+  program.command("status").argument("<id>").argument("<state>").option("--team <teamId>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, state: string, options: { team?: string; silenceDeprecation?: boolean }) => {
+    deprecationWarn("status", options.silenceDeprecation);
     await runCommand(async () => {
       const issue = await getIssue(id);
       const teamId = options.team ?? issue.team?.id;
@@ -220,14 +231,16 @@ async function main(): Promise<void> {
     }, program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("assign").argument("<id>").argument("<user>").action(async (id: string, userName: string) => {
+  program.command("assign").argument("<id>").argument("<user>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, userName: string, options: { silenceDeprecation?: boolean }) => {
+    deprecationWarn("assign", options.silenceDeprecation);
     await runCommand(async () => {
       const user = await findUserByName(userName);
       return updateIssue(id, { assigneeId: user.id, delegateId: null });
     }, program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("delegate").argument("<id>").argument("<agent>").action(async (id: string, agentName: string) => {
+  program.command("delegate").argument("<id>").argument("<agent>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, agentName: string, options: { silenceDeprecation?: boolean }) => {
+    deprecationWarn("delegate", options.silenceDeprecation);
     await runCommand(async () => {
       const user = await findUserByName(agentName);
       return updateIssue(id, { delegateId: user.id });
@@ -238,7 +251,8 @@ async function main(): Promise<void> {
     await runCommand(async () => updateIssue(id, { priority: parseOptionalNumber(level) }), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("handoff").argument("<id>").argument("<reviewer>").argument("[comment]").option("--comment-file <path>").action(async (id: string, reviewer: string, comment: string | undefined, options: { commentFile?: string }) => {
+  program.command("handoff").argument("<id>").argument("<reviewer>").argument("[comment]").option("--comment-file <path>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, reviewer: string, comment: string | undefined, options: { commentFile?: string; silenceDeprecation?: boolean }) => {
+    deprecationWarn("handoff", options.silenceDeprecation);
     await runCommand(async () => handoffIssue(id, reviewer, comment, options.commentFile), program.opts<{ human?: boolean }>().human);
   });
 
@@ -425,6 +439,36 @@ async function main(): Promise<void> {
 
   program.command("test").description("Run full round-trip test of Linear CLI").action(async () => {
     await linearTest();
+  });
+
+  // --- Semantic commands ---
+
+  program.command("observeIssue").argument("<id>").option("--all", "Include all comments instead of last 10").description("Read-only observation of an issue (no ownership change)").action(async (id: string, options: { all?: boolean }) => {
+    await runCommand(async () => observeIssue(id, options.all), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("considerWork").argument("<id>").description("Mark issue as being considered by agent (returns issue context)").action(async (id: string) => {
+    await runCommand(async () => considerWork(id), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("refuseWork").argument("<id>").argument("<delegate>").option("--comment <msg>").option("--comment-file <path>").description("Refuse task and delegate to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => refuseWork(id, delegate, options), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("beginWork").argument("<id>").description("Begin actively working on a task (idempotent)").action(async (id: string) => {
+    await runCommand(async () => beginWork(id), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("handoffWork").argument("<id>").argument("<delegate>").option("--comment <msg>").option("--comment-file <path>").description("Hand off task to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => handoffWork(id, delegate, options), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("complete").argument("<id>").option("--comment <msg>").option("--comment-file <path>").description("Mark task as complete").action(async (id: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => complete(id, options), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("needsHuman").argument("<id>").argument("<assignee>").option("--comment <msg>").option("--comment-file <path>").description("Escalate to human for action").action(async (id: string, assignee: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => needsHuman(id, assignee, options), program.opts<{ human?: boolean }>().human);
   });
 
   await program.parseAsync(process.argv);

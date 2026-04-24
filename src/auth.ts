@@ -143,6 +143,24 @@ export async function checkAuth(): Promise<User> {
  * Run diagnostics on Linear auth and CLI setup
  * Checks: token validity, user identity, and basic read-only operation
  */
+/**
+ * Get the currently authenticated Linear user (the "self" for semantic commands).
+ * Uses the same viewer query as checkAuth but returns a consistent User shape.
+ */
+export async function getSelfUser(): Promise<User> {
+  ensureApiKey();
+  const data = await linearGraphQL<ViewerResponse>(`
+    query GetSelfUser {
+      viewer {
+        id
+        name
+        email
+      }
+    }
+  `);
+  return data.viewer;
+}
+
 export async function linearDoctor(): Promise<void> {
   console.log("🩺 Linear Doctor\n");
   try {

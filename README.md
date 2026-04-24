@@ -14,12 +14,20 @@ This is a complete Linear skill package, not an add-on to some other internal sk
 
 It includes:
 - auth/bootstrap behavior
+- semantic workflow commands (considerWork, beginWork, handoffWork, complete, needsHuman, refuseWork, observeIssue)
 - issue read and write commands
 - workflow state discovery
-- handoff flows
 - project / milestone / relation helpers
-- board and comment-reading helpers
+- board and review helpers
 - workflow and hygiene documentation
+
+### Semantic vs Raw Commands
+
+This skill provides two layers of CLI access to Linear:
+
+**Semantic commands** are the agent-facing standard. Each captures a workflow intent (e.g., "I'm considering this task," "I'm done, hand to the next agent") and handles multiple state changes atomically. Agents should use these exclusively — they eliminate the class of bugs where an agent changes status but forgets to clear the delegate.
+
+**Raw commands** (status, assign, delegate, comment, handoff) remain available for human interactive use but print deprecation warnings when called by agents.
 
 ## Product Boundary
 

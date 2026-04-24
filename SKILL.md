@@ -1,6 +1,6 @@
 ---
 name: linear
-description: Use the Linear CLI for issue management, delegation, and project work. Covers commands, field semantics, and common patterns.
+description: Use the Linear CLI for issue management, delegation, and project work. Semantic commands capture agent intent and handle state transitions automatically.
 ---
 
 # Linear CLI Quick Reference
@@ -8,59 +8,85 @@ description: Use the Linear CLI for issue management, delegation, and project wo
 ## Core Semantics — Know These
 
 ### Assignee vs Delegate
-- **Assignee** = human owner (Matt, Charles as person, etc.). Set with `linear assign <id> <human>`.
-- **Delegate** = agent doing the work (Ai, Charles as agent, Hachi, etc.). Set with `linear delegate <id> <agent-name>`.
-- Agents can ONLY be delegates. If you want Charles (the agent) to work on a ticket, use `linear delegate LIFE-10 charles`.
-- If `linear delegate` returns without error but the delegate field stays null, the agent name may not match — check the exact Linear display name.
+- **Assignee** = human who must act next. Set automatically by `needsHuman` and `complete`. Cleared when an agent takes ownership.
+- **Delegate** = agent who owns the ticket. Set by `considerWork` (self) and `handoffWork`/`refuseWork` (another agent). Cleared by `complete` and `needsHuman`.
+- **The key insight:** assignee is ONLY set when a human needs to do something. This makes "assigned to me" views in Linear reliable — every ticket there is genuinely waiting on human input.
 
-### Workflow Rules (from AGENTS.md)
-1. **All communication goes in the ticket.** Post analysis, findings, updates, deliverables as comments.
-2. **Always delegate when your work is done.** Use `linear handoff <ID> <agent> "<reason>"` — this sets the delegate AND posts a comment. Tagging in a comment alone ≠ delegation.
-3. **If it's not your area, give your perspective and delegate back.**
-4. **Structural issues get their own tickets.** Don't bury observations as footnotes.
-5. **Move tickets forward immediately.** New tickets → Todo status, delegate to appropriate agent.
+### Semantic Commands (Agent Standard)
 
-## Common Commands
+These are the ONLY commands agents should use for workflow state transitions. Every command captures intent and handles multiple API calls atomically.
+
+#### Read Commands
 
 ```
-# View
-linear issue <ID>                    # Full issue details + comments
-linear my-issues                     # Issues assigned to you
+linear observeIssue <ID>             # Read issue + last 10 comments (no ownership change)
+linear observeIssue <ID> --all       # Read issue + ALL comments
+```
+
+Use `observeIssue` when you are @mentioned (not delegated) or doing a board sweep. No state changes.
+
+#### Write Commands
+
+```
+linear considerWork <ID>             # Accept delegation: set delegate=self, status=Thinking, clear assignee
+                                     # Returns issue context + last 10 comments
+linear beginWork <ID>                # Start active work: status=Doing (idempotent)
+linear refuseWork <ID> <agent>       # Decline: status=Todo, delegate to another agent (requires --comment)
+linear handoffWork <ID> <agent>      # Hand off: status=Todo, delegate to agent (requires --comment)
+linear complete <ID>                 # Finish: status=Done, clear delegate + assignee (optional --comment)
+linear needsHuman <ID> <human>       # Escalate: status=Todo, assignee=human, clear delegate (requires --comment)
+```
+
+#### Comment Options
+
+All write commands accept `--comment "<msg>"` or `--comment-file <path>` for comments. `refuseWork`, `handoffWork`, and `needsHuman` require a comment. `considerWork` and `beginWork` do not accept comments — agents should not comment without a handoff.
+
+### When to Use Each Command
+
+| Situation | Command |
+|---|---|
+| You receive a webhook delegation | `considerWork <ID>` |
+| You are @mentioned but not delegated | `observeIssue <ID>` |
+| You start actively coding/researching | `beginWork <ID>` |
+| You're done and passing to another agent | `handoffWork <ID> <agent> --comment "..."` |
+| You're done and the ticket is complete | `complete <ID>` |
+| You need a human decision/input | `needsHuman <ID> <human> --comment "..."` |
+| You're the wrong person for this task | `refuseWork <ID> <agent> --comment "..."` |
+| Browsing tickets without ownership | `observeIssue <ID>` |
+
+### Workflow Rules (from AGENTS.md)
+
+1. **All communication goes in the ticket.** Post analysis, findings, updates, deliverables as comments via `--comment` on semantic commands.
+2. **Always hand off when your work is done.** Use `handoffWork`, `complete`, or `needsHuman`. Never leave a ticket delegated to yourself after completing work.
+3. **If it's not your area, give your perspective and delegate back.** Use `handoffWork` or `refuseWork`.
+4. **Structural issues get their own tickets.** Don't bury observations as footnotes.
+5. **Move tickets forward immediately.** New tickets → delegate to appropriate agent via the semantic commands.
+
+### Deprecated Commands (Human Use Only)
+
+The following commands still work but print deprecation warnings for agents:
+- `linear status`, `linear assign`, `linear delegate`, `linear handoff`, `linear comment`
+
+Agents should NOT use these. They bypass the semantic intent model and cause delegate/assignee drift. Use semantic commands instead.
+
+## Navigation & Utility Commands
+
+```
+linear my-issues                     # Issues delegated to you
 linear my-todos                      # Your todo items
 linear board <TEAM>                  # Team board view
-
-# Create
-linear create <TEAM> "<title>"       # Create issue (opens editor for description)
-
-# Edit
-linear status <ID> "<state>"         # Move to new state
-linear assign <ID> <human>           # Set human assignee
-linear delegate <ID> <agent>         # Set agent delegate
-linear comment <ID> "<body>"         # Post comment
-linear handoff <ID> <agent> "<msg>"  # Delegate + comment in one
-
-# Navigation
+linear review-queue                  # Items in review state
+linear stalled <days>                # Stale tickets
 linear children <ID>                 # View sub-issues
 linear relations <ID>                # View related issues
-linear block <ID> <blocks-ID>        # Mark as blocking
-linear unblock <ID> <blocks-ID>      # Remove block
+linear block <ID> --blocked-by <ID>  # Mark as blocking
+linear unblock <ID> --blocked-by <ID>  # Remove block
 linear project-issues <project>      # List project issues
+linear create <TEAM> "<title>"       # Create issue
+linear edit <ID> --title/--desc      # Edit title/description
 ```
 
 ## Team Keys
 - `LIFE` — Matt's Personal Life
 - `LN3` — Lane 3 (Lane team)
 - `ILL` — Innovative Language Learning (work)
-
-## Patterns
-
-### Completing your work on a ticket
-1. Post your deliverable/findings as a comment
-2. Run `linear handoff <ID> <next-person> "<summary of what was done and what's needed next>"`
-3. Never leave a ticket delegated to yourself after completing work
-
-### Creating child tickets
-Use `linear subtask <TEAM> "<title>"` with `--parent <ID>` to create sub-issues.
-
-### Reviewing tickets
-Use `linear review-queue` and `linear stalled <days>` for triage.

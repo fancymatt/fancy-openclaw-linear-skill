@@ -94,7 +94,7 @@ export interface UpdateIssueInput {
   title?: string;
   description?: string;
   stateId?: string;
-  assigneeId?: string;
+  assigneeId?: string | null;
   delegateId?: string | null;
   priority?: number;
   projectId?: string;
