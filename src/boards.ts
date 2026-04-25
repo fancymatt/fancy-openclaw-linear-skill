@@ -117,7 +117,7 @@ export async function getComments(issueId: string, all = true): Promise<Comment[
     `
       query IssueComments($id: String!, $count: Int!) {
         issue(id: $id) {
-          comments(last: $count, orderBy: createdAt) {
+          comments(first: $count, orderBy: createdAt) {
             nodes {
               id
               body
@@ -140,5 +140,6 @@ export async function getComments(issueId: string, all = true): Promise<Comment[
     throw new Error(`Issue not found: ${issueId}`);
   }
 
-  return data.issue.comments.nodes;
+  // Linear returns newest-first; reverse for chronological reading order
+  return data.issue.comments.nodes.reverse();
 }

@@ -315,7 +315,7 @@ async function main(): Promise<void> {
   program.command("stalled").argument("[days]").action(async (days: string | undefined) => {
     await runCommand(async () => getStalled(days ? Number(days) : 2), program.opts<{ human?: boolean }>().human);
   });
-  program.command("comments").argument("<id>").option("--all").action(async (id: string, options: { all?: boolean }) => {
+  program.command("comments", { hidden: true }).argument("<id>").option("--all").action(async (id: string, options: { all?: boolean }) => {
     await runCommand(async () => getComments(id, options.all !== false), program.opts<{ human?: boolean }>().human);
   });
 
