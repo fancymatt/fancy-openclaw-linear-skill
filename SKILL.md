@@ -83,8 +83,12 @@ Agents should NOT use these. They bypass the semantic intent model and cause del
 ## Navigation & Utility Commands
 
 ```
-linear my-issues                     # Issues delegated to you
-linear my-todos                      # Your todo items
+linear queue                         # Issues delegated to you (your work queue)
+linear queue --next                  # Highest-priority issue only
+linear queue --blocked               # Blocked issues only
+linear my-issues                     # All issues assigned or delegated to you
+linear my-issues --status "To Do"    # Filter by status
+linear my-issues --new               # New/unviewed issues
 linear board <TEAM>                  # Team board view
 linear review-queue                  # Items in review state
 linear stalled <days>                # Stale tickets

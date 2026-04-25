@@ -125,25 +125,55 @@ async function main(): Promise<void> {
     await runCommand(async () => linearDoctor(), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("my-issues").action(async () => {
-    await runCommand(async () => getMyIssues(), program.opts<{ human?: boolean }>().human);
-  });
+  // --- Consolidated queue + my-issues commands ---
 
-  program.command("my-todos").action(async () => {
+  program.command("queue")
+    .description("Issues delegated to you (your work queue)")
+    .option("--next", "Return only the highest-priority issue")
+    .option("--blocked", "Show only blocked issues")
+    .option("--project <name>", "Filter by project name")
+    .action(async (options: { next?: boolean; blocked?: boolean; project?: string }) => {
+      await runCommand(async () => {
+        if (options.blocked) return getMyBlocked(undefined);
+        const queue = await getMyQueue(options.project);
+        if (options.next) {
+          if (queue.length === 0) return { message: "Queue is empty — nothing to do." };
+          return queue[0];
+        }
+        return queue;
+      }, program.opts<{ human?: boolean }>().human);
+    });
+
+  program.command("my-issues")
+    .description("All issues assigned or delegated to you")
+    .option("--status <status>", "Filter by status name (e.g. 'To Do', 'Thinking')")
+    .option("--new", "Show only new (unviewed) issues")
+    .option("--since <iso>", "Issues created since this date")
+    .action(async (options: { status?: string; new?: boolean; since?: string }) => {
+      await runCommand(async () => {
+        if (options.new) return getMyNewIssues(options.since);
+        if (options.status) return getMyIssues([options.status]);
+        return getMyIssues();
+      }, program.opts<{ human?: boolean }>().human);
+    });
+
+  // --- Legacy my-* commands (hidden, backward compat) ---
+
+  program.command("my-todos", { hidden: true }).action(async () => {
     await runCommand(async () => getMyIssues(["Todo"]), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("my-new").option("--since <iso>").action(async (options: { since?: string }) => {
+  program.command("my-new", { hidden: true }).option("--since <iso>").action(async (options: { since?: string }) => {
     await runCommand(async () => getMyNewIssues(options.since), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("my-queue")
+  program.command("my-queue", { hidden: true })
     .option("--project <name>", "Filter by project name")
     .action(async (options: { project?: string }) => {
       await runCommand(async () => getMyQueue(options.project), program.opts<{ human?: boolean }>().human);
     });
 
-  program.command("my-next").action(async () => {
+  program.command("my-next", { hidden: true }).action(async () => {
     await runCommand(async () => {
       const queue = await getMyQueue();
       if (queue.length === 0) return { message: "Queue is empty — nothing to do." };
@@ -480,7 +510,7 @@ async function main(): Promise<void> {
 
   // --- My blocked ---
 
-  program.command("my-blocked").option("--limit <n>").description("Show issues assigned to me that are Blocked").action(async (options: { limit?: string }) => {
+  program.command("my-blocked", { hidden: true }).option("--limit <n>").description("Show issues assigned to me that are Blocked").action(async (options: { limit?: string }) => {
     await runCommand(async () => getMyBlocked(options.limit ? Number(options.limit) : undefined), program.opts<{ human?: boolean }>().human);
   });
 
