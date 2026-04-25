@@ -1,5 +1,5 @@
 import { linearGraphQL } from "./client";
-import { STATE_FIELDS, ASSIGNEE_FIELDS, TEAM_FIELDS } from "./fragments";
+import { STATE_BLOCK, ASSIGNEE_BLOCK, TEAM_BLOCK } from "./fragments";
 import { Comment, Issue } from "./types";
 
 interface TeamIssuesResponse {
@@ -38,8 +38,8 @@ export async function getBoard(teamId: string): Promise<Record<string, Issue[]>>
               title
               updatedAt
               priority
-              ${STATE_FIELDS}
-              ${ASSIGNEE_FIELDS}
+              ${STATE_BLOCK}
+              ${ASSIGNEE_BLOCK}
             }
           }
         }
@@ -71,9 +71,9 @@ export async function getReviewQueue(): Promise<Issue[]> {
             title
             updatedAt
             priority
-            ${STATE_FIELDS}
-            ${TEAM_FIELDS}
-            ${ASSIGNEE_FIELDS}
+            ${STATE_BLOCK}
+            ${TEAM_BLOCK}
+            ${ASSIGNEE_BLOCK}
           }
         }
       }
@@ -99,9 +99,9 @@ export async function getStalled(days = 2): Promise<Issue[]> {
               title
               updatedAt
               priority
-              ${STATE_FIELDS}
-              ${TEAM_FIELDS}
-              ${ASSIGNEE_FIELDS}
+              ${STATE_BLOCK}
+              ${TEAM_BLOCK}
+              ${ASSIGNEE_BLOCK}
             }
           }
         }

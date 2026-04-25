@@ -90,6 +90,7 @@ function loadApiKeyFromEnvFile(filePath: string): string | undefined {
  */
 function envVarCandidates(): string[] {
   return [
+    "LINEAR_OAUTH_TOKEN",
     "LINEAR_API_KEY",
     "LINEAR_DEVELOPER_TOKEN",
   ];
@@ -114,7 +115,7 @@ export function ensureApiKey(): string {
   const tried = secretFileCandidates().join(", ");
   const agentName = candidateNames()[0] ?? "unknown";
   throw new Error(
-    `No Linear API key found for agent ${agentName}. Set LINEAR_API_KEY or LINEAR_DEVELOPER_TOKEN, or provision .secrets/linear.env. Looked in: ${tried}`
+    `No Linear API key found for agent ${agentName}. Set LINEAR_OAUTH_TOKEN, LINEAR_API_KEY, or LINEAR_DEVELOPER_TOKEN, or provision .secrets/linear.env. Looked in: ${tried}`
   );
 }
 

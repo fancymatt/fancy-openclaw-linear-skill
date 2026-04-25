@@ -128,5 +128,11 @@ export const ISSUE_FIELDS = `
   }
 `;
 
+/** Wrapped versions for inline use in list/board queries */
+export const STATE_BLOCK = `state { ${STATE_FIELDS} }`;
+export const ASSIGNEE_BLOCK = `assignee { ${ASSIGNEE_FIELDS} }`;
+export const DELEGATE_BLOCK = `delegate { ${DELEGATE_FIELDS} }`;
+export const TEAM_BLOCK = `team { ${TEAM_FIELDS} }`;
+
 /** Alias for backward compat with existing import in issues.ts */
 export { ISSUE_FIELDS as ISSUE_FIELDS_FRAGMENT };

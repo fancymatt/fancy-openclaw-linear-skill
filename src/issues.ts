@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { linearGraphQL } from "./client";
 import { getSelfUser } from "./auth";
-import { ISSUE_FIELDS, TEAM_FIELDS, STATE_FIELDS, ASSIGNEE_FIELDS, DELEGATE_FIELDS } from "./fragments";
+import { ISSUE_FIELDS, STATE_BLOCK, ASSIGNEE_BLOCK, TEAM_BLOCK, DELEGATE_BLOCK } from "./fragments";
 import { CreateIssueInput, Issue, UpdateIssueInput } from "./types";
 
 interface IssueResponse {
@@ -350,9 +350,9 @@ export async function getMyIssues(filterStateNames?: string[]): Promise<Issue[]>
               title
               updatedAt
               priority
-              ${STATE_FIELDS}
-              ${ASSIGNEE_FIELDS}
-              ${TEAM_FIELDS}
+              ${STATE_BLOCK}
+              ${ASSIGNEE_BLOCK}
+              ${TEAM_BLOCK}
               project { id name }
             }
           }
@@ -378,9 +378,9 @@ export async function getMyNewIssues(updatedSinceIso?: string): Promise<Issue[]>
               title
               updatedAt
               priority
-              ${STATE_FIELDS}
-              ${ASSIGNEE_FIELDS}
-              ${TEAM_FIELDS}
+              ${STATE_BLOCK}
+              ${ASSIGNEE_BLOCK}
+              ${TEAM_BLOCK}
               project { id name }
             }
           }
@@ -414,10 +414,10 @@ export async function getMyQueue(projectName?: string): Promise<Issue[]> {
             title
             updatedAt
             priority
-            ${STATE_FIELDS}
-            ${ASSIGNEE_FIELDS}
-            ${DELEGATE_FIELDS}
-            ${TEAM_FIELDS}
+            ${STATE_BLOCK}
+            ${ASSIGNEE_BLOCK}
+            ${DELEGATE_BLOCK}
+            ${TEAM_BLOCK}
             project { id name }
           }
         }
