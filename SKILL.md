@@ -19,46 +19,48 @@ These are the ONLY commands agents should use for workflow state transitions. Ev
 #### Read Commands
 
 ```
-linear observeIssue <ID>             # Read issue + last 10 comments (no ownership change)
-linear observeIssue <ID> --all       # Read issue + ALL comments
+linear observe-issue <ID>             # Read issue + last 10 comments (no ownership change)
+linear observe-issue <ID> --all       # Read issue + ALL comments
 ```
 
-Use `observeIssue` when you are @mentioned (not delegated) or doing a board sweep. No state changes.
+Use `observe-issue` when you are @mentioned (not delegated) or doing a board sweep. No state changes.
 
 #### Write Commands
 
 ```
-linear considerWork <ID>             # Accept delegation: set delegate=self, status=Thinking, clear assignee
-                                     # Returns issue context + last 10 comments
-linear beginWork <ID>                # Start active work: status=Doing (idempotent)
-linear refuseWork <ID> <agent>       # Decline: status=Todo, delegate to another agent (requires --comment)
-linear handoffWork <ID> <agent>      # Hand off: status=Todo, delegate to agent (requires --comment)
-linear complete <ID>                 # Finish: status=Done, clear delegate + assignee (optional --comment)
-linear needsHuman <ID> <human>       # Escalate: status=Todo, assignee=human, clear delegate (requires --comment)
+linear consider-work <ID>             # Accept delegation: set delegate=self, status=Thinking, clear assignee
+                                      # Returns issue context + last 10 comments
+linear begin-work <ID>                # Start active work: status=Doing (idempotent)
+linear refuse-work <ID> <agent>       # Decline: status=Todo, delegate to another agent (requires --comment)
+linear handoff-work <ID> <agent>      # Hand off: status=Todo, delegate to agent (requires --comment)
+linear complete <ID>                  # Finish: status=Done, clear delegate + assignee (optional --comment)
+linear needs-human <ID> <human>       # Escalate: status=Todo, assignee=human, clear delegate (requires --comment)
 ```
+
+> **Note:** camelCase aliases (`considerWork`, `beginWork`, etc.) still work for backward compatibility but kebab-case is the standard.
 
 #### Comment Options
 
-All write commands accept `--comment "<msg>"` or `--comment-file <path>` for comments. `refuseWork`, `handoffWork`, and `needsHuman` require a comment. `considerWork` and `beginWork` do not accept comments — agents should not comment without a handoff.
+All write commands accept `--comment "<msg>"` or `--comment-file <path>` for comments. `refuse-work`, `handoff-work`, and `needs-human` require a comment. `consider-work` and `begin-work` do not accept comments — agents should not comment without a handoff.
 
 ### When to Use Each Command
 
 | Situation | Command |
 |---|---|
-| You receive a webhook delegation | `considerWork <ID>` |
-| You are @mentioned but not delegated | `observeIssue <ID>` |
-| You start actively coding/researching | `beginWork <ID>` |
-| You're done and passing to another agent | `handoffWork <ID> <agent> --comment "..."` |
+| You receive a webhook delegation | `consider-work <ID>` |
+| You are @mentioned but not delegated | `observe-issue <ID>` |
+| You start actively coding/researching | `begin-work <ID>` |
+| You're done and passing to another agent | `handoff-work <ID> <agent> --comment "..."` |
 | You're done and the ticket is complete | `complete <ID>` |
-| You need a human decision/input | `needsHuman <ID> <human> --comment "..."` |
-| You're the wrong person for this task | `refuseWork <ID> <agent> --comment "..."` |
-| Browsing tickets without ownership | `observeIssue <ID>` |
+| You need a human decision/input | `needs-human <ID> <human> --comment "..."` |
+| You're the wrong person for this task | `refuse-work <ID> <agent> --comment "..."` |
+| Browsing tickets without ownership | `observe-issue <ID>` |
 
 ### Workflow Rules (from AGENTS.md)
 
 1. **All communication goes in the ticket.** Post analysis, findings, updates, deliverables as comments via `--comment` on semantic commands.
-2. **Always hand off when your work is done.** Use `handoffWork`, `complete`, or `needsHuman`. Never leave a ticket delegated to yourself after completing work.
-3. **If it's not your area, give your perspective and delegate back.** Use `handoffWork` or `refuseWork`.
+2. **Always hand off when your work is done.** Use `handoff-work`, `complete`, or `needs-human`. Never leave a ticket delegated to yourself after completing work.
+3. **If it's not your area, give your perspective and delegate back.** Use `handoff-work` or `refuse-work`.
 4. **Structural issues get their own tickets.** Don't bury observations as footnotes.
 5. **Move tickets forward immediately.** New tickets → delegate to appropriate agent via the semantic commands.
 

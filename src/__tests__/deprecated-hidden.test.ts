@@ -9,7 +9,7 @@ describe("deprecated commands hidden from --help", () => {
     });
 
     for (const cmd of deprecatedCommands) {
-      const commandRegex = new RegExp(`^  ${cmd}\\b`, "m");
+      const commandRegex = new RegExp(`^  ${cmd}(\\s|\\|)`, "m");
       expect(helpOutput).not.toMatch(commandRegex);
     }
   });

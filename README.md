@@ -14,7 +14,7 @@ This is a complete Linear skill package, not an add-on to some other internal sk
 
 It includes:
 - auth/bootstrap behavior
-- semantic workflow commands (considerWork, beginWork, handoffWork, complete, needsHuman, refuseWork, observeIssue)
+- semantic workflow commands (consider-work, begin-work, handoff-work, complete, needs-human, refuse-work, observe-issue; camelCase aliases supported)
 - issue read and write commands
 - workflow state discovery
 - project / milestone / relation helpers
@@ -95,13 +95,13 @@ You should see your Linear user name and email printed. If not, see `references/
 
 | Command | Description |
 |---|---|
-| `linear considerWork <id>` | Mark issue as being considered (status → Thinking, delegate → self, assignee cleared). Returns issue context. |
-| `linear beginWork <id>` | Begin actively working (status → Doing). Idempotent. |
-| `linear handoffWork <id> <agent> [--comment <msg>] [--comment-file <path>]` | Hand off task to another agent. Sets delegate, clears assignee, posts comment. |
+| `linear consider-work <id>` | Mark issue as being considered (status → Thinking, delegate → self, assignee cleared). Returns issue context. |
+| `linear begin-work <id>` | Begin actively working (status → Doing). Idempotent. |
+| `linear handoff-work <id> <agent> [--comment <msg>] [--comment-file <path>]` | Hand off task to another agent. Sets delegate, clears assignee, posts comment. |
 | `linear complete <id> [--comment <msg>] [--comment-file <path>]` | Mark task as Done, clear delegate. |
-| `linear needsHuman <id> <assignee> [--comment <msg>] [--comment-file <path>]` | Escalate to human. Sets assignee, clears delegate. |
-| `linear refuseWork <id> <delegate> [--comment <msg>] [--comment-file <path>]` | Refuse task and delegate to another agent. |
-| `linear observeIssue <id> [--all]` | Read-only observation of an issue. No ownership change. `--all` includes all comments. |
+| `linear needs-human <id> <assignee> [--comment <msg>] [--comment-file <path>]` | Escalate to human. Sets assignee, clears delegate. |
+| `linear refuse-work <id> <delegate> [--comment <msg>] [--comment-file <path>]` | Refuse task and delegate to another agent. |
+| `linear observe-issue <id> [--all]` | Read-only observation of an issue. No ownership change. `--all` includes all comments. |
 
 ### Issue Management
 
