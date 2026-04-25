@@ -219,14 +219,10 @@ async function main(): Promise<void> {
     .argument("<id>")
     .argument("[body]")
     .option("--body-file <path>")
-    .action(async (id: string, body: string | undefined, options: Record<string, string | undefined>) => {
-      await runCommand(async () => {
-        const finalBody = options.bodyFile ? await fs.readFile(options.bodyFile, "utf8") : body;
-        if (!finalBody) {
-          throw new Error("Comment body is required. Pass <body> or --body-file.");
-        }
-        return addComment(id, finalBody);
-      }, program.opts<{ human?: boolean }>().human);
+    .action(async () => {
+      console.error("Error: 'linear comment' has been removed. Comments must be paired with a state transition.");
+      console.error("Use one of: handoff-work, needs-human, refuse-work, or complete (with --comment flag).");
+      process.exit(1);
     });
 
   program.command("states").argument("<team>").option("--refresh").action(async (team: string, options: { refresh?: boolean }) => {
