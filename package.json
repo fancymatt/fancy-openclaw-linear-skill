@@ -4,6 +4,10 @@
   "bin": {
     "linear": "dist/index.js"
   },
+  "files": [
+    "dist/**/*.js",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "jest",
