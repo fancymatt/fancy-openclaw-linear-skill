@@ -1,9 +1,10 @@
-import fs from "node:fs/promises";
-
-import { getSelfUser } from "./auth";
+import {
+  executeTransition,
+  type TransitionArgs,
+  type TransitionResult,
+} from "./state-machine";
 import { getComments } from "./boards";
-import { addComment, findUserByName, getIssue, updateIssue } from "./issues";
-import { findSemanticState } from "./states";
+import { getIssue } from "./issues";
 
 export interface ObserveResult {
   identifier: string;
@@ -23,28 +24,6 @@ export interface SemanticResult {
   delegate: string | null;
   assignee: string | null;
   commentPosted: boolean;
-}
-
-async function resolveComment(
-  comment?: string,
-  commentFile?: string
-): Promise<string | undefined> {
-  if (commentFile) {
-    const content = await fs.readFile(commentFile, "utf8");
-    return content.trim() || undefined;
-  }
-  return comment?.trim() || undefined;
-}
-
-function requireComment(
-  command: string,
-  comment?: string
-): asserts comment is string {
-  if (!comment) {
-    throw new Error(
-      `${command} requires a non-empty comment. Use --comment or --comment-file.`
-    );
-  }
 }
 
 /**
@@ -90,48 +69,13 @@ export async function observeIssue(
 export async function considerWork(
   issueId: string
 ): Promise<SemanticResult & { context?: ObserveResult }> {
-  const issue = await getIssue(issueId);
-  const teamId = issue.team?.id;
-  if (!teamId) {
-    throw new Error(`Issue ${issue.identifier} has no team.`);
-  }
-
-  const self = await getSelfUser();
-  const state = await findSemanticState(teamId, "thinking");
-
-  // updateIssue returns the fresh (post-mutation) issue, avoiding a re-fetch
-  const updatedIssue = await updateIssue(issueId, {
-    stateId: state.id,
-    delegateId: self.id,
-    assigneeId: null,
+  return executeTransition("considerWork", { issueId }, {
+    targetState: "thinking",
+    commentMode: "none",
+    delegateToSelf: true,
+    clearAssignee: true,
+    includeContext: true,
   });
-
-  // Only fetch comments — issue data comes from updateIssue's built-in re-fetch
-  const comments = await getComments(updatedIssue.id);
-  const context: ObserveResult = {
-    identifier: updatedIssue.identifier,
-    title: updatedIssue.title,
-    description: updatedIssue.description ?? "",
-    state: { name: updatedIssue.state?.name ?? "Unknown" },
-    priority: updatedIssue.priority ?? 0,
-    assignee: updatedIssue.assignee ? { name: updatedIssue.assignee.name } : null,
-    delegate: updatedIssue.delegate ? { name: updatedIssue.delegate.name } : null,
-    comments: comments.map((c) => ({
-      body: c.body,
-      createdAt: c.createdAt ?? "",
-      user: c.user ? { name: c.user.name } : { name: "Unknown" },
-    })),
-  };
-
-  return {
-    command: "considerWork",
-    issueId: issue.identifier,
-    state: state.name,
-    delegate: self.name,
-    assignee: null,
-    commentPosted: false,
-    context,
-  };
 }
 
 /**
@@ -147,34 +91,17 @@ export async function refuseWork(
   delegateName: string,
   options?: { comment?: string; commentFile?: string }
 ): Promise<SemanticResult> {
-  const issue = await getIssue(issueId);
-  const teamId = issue.team?.id;
-  if (!teamId) {
-    throw new Error(`Issue ${issue.identifier} has no team.`);
-  }
-
-  const body = await resolveComment(options?.comment, options?.commentFile);
-  requireComment("refuseWork", body);
-
-  const delegate = await findUserByName(delegateName);
-  const state = await findSemanticState(teamId, "todo");
-
-  // Comment FIRST so the receiving agent sees context when they pick up the ticket
-  await addComment(issueId, body!);
-
-  await updateIssue(issueId, {
-    stateId: state.id,
-    delegateId: delegate.id,
+  return executeTransition("refuseWork", {
+    issueId,
+    comment: options?.comment,
+    commentFile: options?.commentFile,
+    userName: delegateName,
+  }, {
+    targetState: "todo",
+    commentMode: "required",
+    delegateName: (args) => args.userName,
+    commentFirst: true,
   });
-
-  return {
-    command: "refuseWork",
-    issueId: issue.identifier,
-    state: state.name,
-    delegate: delegate.name,
-    assignee: null,
-    commentPosted: true,
-  };
 }
 
 /**
@@ -188,29 +115,11 @@ export async function refuseWork(
 export async function beginWork(
   issueId: string
 ): Promise<SemanticResult> {
-  const issue = await getIssue(issueId);
-  const teamId = issue.team?.id;
-  if (!teamId) {
-    throw new Error(`Issue ${issue.identifier} has no team.`);
-  }
-
-  const state = await findSemanticState(teamId, "doing");
-
-  // Only update state if not already in a "doing" state
-  const currentStateName = issue.state?.name?.toLowerCase() ?? "";
-  const targetStateName = state.name.toLowerCase();
-  if (currentStateName !== targetStateName) {
-    await updateIssue(issueId, { stateId: state.id });
-  }
-
-  return {
-    command: "beginWork",
-    issueId: issue.identifier,
-    state: state.name,
-    delegate: issue.delegate?.name ?? null,
-    assignee: issue.assignee?.name ?? null,
-    commentPosted: false,
-  };
+  return executeTransition("beginWork", { issueId }, {
+    targetState: "doing",
+    commentMode: "none",
+    skipIfSameState: true,
+  });
 }
 
 /**
@@ -227,35 +136,18 @@ export async function handoffWork(
   delegateName: string,
   options?: { comment?: string; commentFile?: string }
 ): Promise<SemanticResult> {
-  const issue = await getIssue(issueId);
-  const teamId = issue.team?.id;
-  if (!teamId) {
-    throw new Error(`Issue ${issue.identifier} has no team.`);
-  }
-
-  const body = await resolveComment(options?.comment, options?.commentFile);
-  requireComment("handoffWork", body);
-
-  const delegate = await findUserByName(delegateName);
-  const state = await findSemanticState(teamId, "todo");
-
-  // Comment FIRST so the receiving agent sees context when they pick up the ticket
-  await addComment(issueId, body!);
-
-  await updateIssue(issueId, {
-    stateId: state.id,
-    delegateId: delegate.id,
-    assigneeId: null,
+  return executeTransition("handoffWork", {
+    issueId,
+    comment: options?.comment,
+    commentFile: options?.commentFile,
+    userName: delegateName,
+  }, {
+    targetState: "todo",
+    commentMode: "required",
+    delegateName: (args) => args.userName,
+    clearAssignee: true,
+    commentFirst: true,
   });
-
-  return {
-    command: "handoffWork",
-    issueId: issue.identifier,
-    state: state.name,
-    delegate: delegate.name,
-    assignee: null,
-    commentPosted: true,
-  };
 }
 
 /**
@@ -271,35 +163,16 @@ export async function complete(
   issueId: string,
   options?: { comment?: string; commentFile?: string }
 ): Promise<SemanticResult> {
-  const issue = await getIssue(issueId);
-  const teamId = issue.team?.id;
-  if (!teamId) {
-    throw new Error(`Issue ${issue.identifier} has no team.`);
-  }
-
-  const state = await findSemanticState(teamId, "done");
-  const body = await resolveComment(options?.comment, options?.commentFile);
-
-  let commentPosted = false;
-  if (body) {
-    await addComment(issueId, body);
-    commentPosted = true;
-  }
-
-  await updateIssue(issueId, {
-    stateId: state.id,
-    delegateId: null,
-    assigneeId: null,
+  return executeTransition("complete", {
+    issueId,
+    comment: options?.comment,
+    commentFile: options?.commentFile,
+  }, {
+    targetState: "done",
+    commentMode: "optional",
+    clearDelegate: true,
+    clearAssignee: true,
   });
-
-  return {
-    command: "complete",
-    issueId: issue.identifier,
-    state: state.name,
-    delegate: null,
-    assignee: null,
-    commentPosted,
-  };
 }
 
 /**
@@ -316,33 +189,16 @@ export async function needsHuman(
   assigneeName: string,
   options?: { comment?: string; commentFile?: string }
 ): Promise<SemanticResult> {
-  const issue = await getIssue(issueId);
-  const teamId = issue.team?.id;
-  if (!teamId) {
-    throw new Error(`Issue ${issue.identifier} has no team.`);
-  }
-
-  const body = await resolveComment(options?.comment, options?.commentFile);
-  requireComment("needsHuman", body);
-
-  const assignee = await findUserByName(assigneeName);
-  const state = await findSemanticState(teamId, "todo");
-
-  // Comment FIRST so the human sees context when they pick up the ticket
-  await addComment(issueId, body!);
-
-  await updateIssue(issueId, {
-    stateId: state.id,
-    delegateId: null,
-    assigneeId: assignee.id,
+  return executeTransition("needsHuman", {
+    issueId,
+    comment: options?.comment,
+    commentFile: options?.commentFile,
+    userName: assigneeName,
+  }, {
+    targetState: "todo",
+    commentMode: "required",
+    clearDelegate: true,
+    assigneeName: (args) => args.userName,
+    commentFirst: true,
   });
-
-  return {
-    command: "needsHuman",
-    issueId: issue.identifier,
-    state: state.name,
-    delegate: null,
-    assignee: assignee.name,
-    commentPosted: true,
-  };
 }
