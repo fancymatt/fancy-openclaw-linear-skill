@@ -46,20 +46,36 @@ Linear → fancy-openclaw-linear-connector → OpenClaw agent
 
 ## Install
 
-**Standard install (single-host, multiple agents):** Clone once and symlink into each agent workspace. This ensures all agents share one binary — a single `npm run build` in the canonical checkout propagates to every agent immediately.
+**Standard install (single-host, all agents):** Clone once, build, and install globally from the tarball. This installs a copy of the built dist — not a symlink — so it survives nvm switches and source directory changes.
 
 ```bash
 # 1. Clone once to a shared location
-git clone git@github.com:fancymatt/fancy-openclaw-linear-skill.git ~/Code/openclaw-linear/fancy-openclaw-linear-skill
-cd ~/Code/openclaw-linear/fancy-openclaw-linear-skill
+git clone git@github.com:fancymatt/fancy-openclaw-linear-skill.git ~/Code/fancy-openclaw-linear-skill
+cd ~/Code/fancy-openclaw-linear-skill
 npm install
-npm run build
 
-# 2. Symlink into each agent workspace (repeat per agent)
-ln -s ~/Code/openclaw-linear/fancy-openclaw-linear-skill ~/.openclaw/workspace-{agent}/skills/linear
+# 2. Build and install globally (prepack runs build automatically)
+npm install -g .
+
+# 3. Verify
+linear auth check
 ```
 
-**Do not clone into individual agent workspaces.** Independent copies diverge silently and require per-workspace rebuilds on every update.
+**To update after pulling changes:**
+
+```bash
+cd ~/Code/fancy-openclaw-linear-skill
+git pull
+npm install -g .
+```
+
+**Skill symlink** (for agent workspace SKILL.md discovery, separate from the binary):
+
+```bash
+ln -s ~/Code/fancy-openclaw-linear-skill ~/.openclaw/workspace-{agent}/skills/linear
+```
+
+**Do not use `npm link`.** It creates a fragile symlink to the source tree that breaks on nvm switches, npm global installs, or forgotten builds. Always use `npm install -g .` (or `npm install -g <tarball>`) which copies the built dist into node_modules.
 
 ## Auth Setup
 

@@ -1,0 +1,9 @@
+src/
+tests/
+references/
+dist/__tests__/
+tsconfig.json
+jest.config.js
+SKILL.md
+.gitignore
+*.bak
