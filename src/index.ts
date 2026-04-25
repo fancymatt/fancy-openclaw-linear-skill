@@ -185,7 +185,7 @@ async function main(): Promise<void> {
     });
 
   program
-    .command("comment")
+    .command("comment", { hidden: true })
     .argument("<id>")
     .argument("[body]")
     .option("--body-file <path>")
@@ -206,7 +206,7 @@ async function main(): Promise<void> {
     }, program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("status").argument("<id>").argument("<state>").option("--team <teamId>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, state: string, options: { team?: string; silenceDeprecation?: boolean }) => {
+  program.command("status", { hidden: true }).argument("<id>").argument("<state>").option("--team <teamId>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, state: string, options: { team?: string; silenceDeprecation?: boolean }) => {
     deprecationWarn("status", options.silenceDeprecation);
     await runCommand(async () => {
       const issue = await getIssue(id);
@@ -235,7 +235,7 @@ async function main(): Promise<void> {
     }, program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("assign").argument("<id>").argument("<user>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, userName: string, options: { silenceDeprecation?: boolean }) => {
+  program.command("assign", { hidden: true }).argument("<id>").argument("<user>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, userName: string, options: { silenceDeprecation?: boolean }) => {
     deprecationWarn("assign", options.silenceDeprecation);
     await runCommand(async () => {
       const user = await findUserByName(userName);
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     }, program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("delegate").argument("<id>").argument("<agent>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, agentName: string, options: { silenceDeprecation?: boolean }) => {
+  program.command("delegate", { hidden: true }).argument("<id>").argument("<agent>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, agentName: string, options: { silenceDeprecation?: boolean }) => {
     deprecationWarn("delegate", options.silenceDeprecation);
     await runCommand(async () => {
       const user = await findUserByName(agentName);
@@ -255,7 +255,7 @@ async function main(): Promise<void> {
     await runCommand(async () => updateIssue(id, { priority: parseOptionalNumber(level) }), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("handoff").argument("<id>").argument("<reviewer>").argument("[comment]").option("--comment-file <path>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, reviewer: string, comment: string | undefined, options: { commentFile?: string; silenceDeprecation?: boolean }) => {
+  program.command("handoff", { hidden: true }).argument("<id>").argument("<reviewer>").argument("[comment]").option("--comment-file <path>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, reviewer: string, comment: string | undefined, options: { commentFile?: string; silenceDeprecation?: boolean }) => {
     deprecationWarn("handoff", options.silenceDeprecation);
     await runCommand(async () => handoffIssue(id, reviewer, comment, options.commentFile), program.opts<{ human?: boolean }>().human);
   });

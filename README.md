@@ -115,8 +115,6 @@ You should see your Linear user name and email printed. If not, see `references/
 | `linear branch <id>` | Get the branch name associated with an issue |
 | `linear priority <id> <level>` | Set issue priority |
 | `linear comments <id> [--all]` | Read comments on an issue |
-| `linear comment <id> <body>` | Post a comment to an issue |
-| `linear comment <id> --body-file <path>` | Post a comment from a file |
 | `linear delete-comment <commentId>` | Delete a comment |
 | `linear upload <file> --comment <issueId>` | Upload a file attachment, optionally linking to a comment |
 
@@ -128,7 +126,9 @@ You should see your Linear user name and email printed. If not, see `references/
 | `linear label <id> <labelName...> [--team <team>]` | Add label(s) to an issue. Case-insensitive. Appends to existing labels. |
 | `linear unlabel <id> <labelName...> [--team <team>]` | Remove label(s) from an issue. Case-insensitive. |
 
-### Assignment & Delegation (Raw — Deprecated for Agents)
+### Deprecated Commands (Hidden from --help)
+
+These commands still work when invoked directly but are hidden from `linear --help` output. They bypass the semantic workflow model and should not be used by agents.
 
 | Command | Description |
 |---|---|
@@ -136,8 +136,10 @@ You should see your Linear user name and email printed. If not, see `references/
 | `linear delegate <id> <agent>` | Delegate issue to an agent. |
 | `linear handoff <id> <reviewer> [comment] [--comment-file <path>]` | Delegate + post comment atomically. |
 | `linear status <id> <state> [--team <team>]` | Change issue status. |
+| `linear comment <id> <body>` | Post a comment to an issue. |
+| `linear comment <id> --body-file <path>` | Post a comment from a file. |
 
-> ⚠️ These commands print deprecation warnings. Use semantic commands instead.
+> ⚠️ Hidden from `--help`. Print deprecation warnings when used. Agents should use semantic commands instead.
 
 ### Hierarchy & Relations
 
