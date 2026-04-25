@@ -11,7 +11,8 @@ import {
   getMyIssues,
   getMyNewIssues,
   getMyQueue,
-  findUserByName
+  findUserByName,
+  buildTiptapBody
 } from "../issues";
 
 jest.mock("../client", () => ({
@@ -285,5 +286,58 @@ describe("findUserByName", () => {
       users: { nodes: [{ id: "u-1", name: "Matt A" }, { id: "u-2", name: "Matt B" }] }
     });
     await expect(findUserByName("Matt")).rejects.toThrow("Could not uniquely resolve");
+  });
+});
+
+describe("buildTiptapBody", () => {
+  beforeEach(() => mockedGraphQL.mockReset());
+
+  it("returns null when no issue identifiers found", async () => {
+    const result = await buildTiptapBody("This is a plain comment with no refs.");
+    expect(result).toBeNull();
+  });
+
+  it("builds tiptap doc with a single issue reference", async () => {
+    mockedGraphQL.mockResolvedValue({
+      issues: { nodes: [{ ...mockIssue, id: "uuid-ai-424", identifier: "AI-424" }] }
+    });
+    const result = await buildTiptapBody("See AI-424 for context.") as any;
+    expect(result).not.toBeNull();
+    expect(result.type).toBe("doc");
+    const para = result.content[0];
+    expect(para.type).toBe("paragraph");
+    const nodes = para.content;
+    expect(nodes.some((n: any) => n.type === "issueReference" && n.attrs.id === "uuid-ai-424")).toBe(true);
+    expect(nodes.some((n: any) => n.type === "text" && n.text.includes("See "))).toBe(true);
+  });
+
+  it("builds tiptap doc with multiple issue references", async () => {
+    mockedGraphQL
+      .mockResolvedValueOnce({ issues: { nodes: [{ ...mockIssue, id: "uuid-ai-100", identifier: "AI-100" }] } })
+      .mockResolvedValueOnce({ issues: { nodes: [{ ...mockIssue, id: "uuid-ai-200", identifier: "AI-200" }] } });
+    const result = await buildTiptapBody("Work on AI-100 and AI-200 together.") as any;
+    expect(result).not.toBeNull();
+    const para = result.content[0];
+    const refNodes = para.content.filter((n: any) => n.type === "issueReference");
+    expect(refNodes).toHaveLength(2);
+    expect(refNodes.map((n: any) => n.attrs.id).sort()).toEqual(["uuid-ai-100", "uuid-ai-200"].sort());
+  });
+
+  it("falls back to null when identifier cannot be resolved", async () => {
+    mockedGraphQL.mockRejectedValue(new Error("Issue not found: FAKE-999"));
+    const result = await buildTiptapBody("Reference to FAKE-999 here.");
+    // All identifiers failed to resolve — should return null
+    expect(result).toBeNull();
+  });
+
+  it("handles reference mid-sentence correctly", async () => {
+    mockedGraphQL.mockResolvedValue({
+      issues: { nodes: [{ ...mockIssue, id: "uuid-fcx-5", identifier: "FCX-5" }] }
+    });
+    const result = await buildTiptapBody("Blocked by FCX-5 until further notice.") as any;
+    const para = result.content[0];
+    const texts = para.content.filter((n: any) => n.type === "text").map((n: any) => n.text);
+    expect(texts.some((t: string) => t.includes("Blocked by "))).toBe(true);
+    expect(texts.some((t: string) => t.includes(" until further notice."))).toBe(true);
   });
 });

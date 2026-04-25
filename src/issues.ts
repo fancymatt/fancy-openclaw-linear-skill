@@ -251,6 +251,16 @@ export async function createIssue(input: CreateIssueInput): Promise<Issue> {
 }
 
 export async function updateIssue(id: string, input: UpdateIssueInput): Promise<Issue> {
+  // If description contains bare issue identifiers, upgrade to descriptionData
+  let resolvedInput: UpdateIssueInput & { descriptionData?: object } = { ...input };
+  if (input.description) {
+    const descData = await buildTiptapBody(input.description);
+    if (descData) {
+      const { description: _desc, ...rest } = resolvedInput;
+      resolvedInput = { ...rest, descriptionData: descData } as typeof resolvedInput;
+    }
+  }
+
   const data = await linearGraphQL<UpdateIssueMutationResponse>(
     `
       mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
@@ -264,7 +274,7 @@ export async function updateIssue(id: string, input: UpdateIssueInput): Promise<
     `,
     {
       id,
-      input
+      input: resolvedInput
     }
   );
 
@@ -273,6 +283,92 @@ export async function updateIssue(id: string, input: UpdateIssueInput): Promise<
   }
 
   return getIssue(data.issueUpdate.issue.id);
+}
+
+// ---------------------------------------------------------------------------
+// Tiptap bodyData helpers for native Linear issue references
+// ---------------------------------------------------------------------------
+
+const BARE_ISSUE_RE = /\b([A-Z]{2,10}-\d+)\b/g;
+
+type TiptapNode =
+  | { type: "doc"; content: TiptapNode[] }
+  | { type: "paragraph"; content?: TiptapNode[] }
+  | { type: "text"; text: string; marks?: Array<{ type: string }> }
+  | { type: "hardBreak" }
+  | { type: "issueReference"; attrs: { id: string } };
+
+/**
+ * Build a tiptap JSON document from plain text, replacing bare issue
+ * identifiers (e.g. AI-424) with native issueReference nodes.
+ * Returns null if no issue identifiers are found (caller falls back to Markdown).
+ */
+export async function buildTiptapBody(text: string): Promise<object | null> {
+  // Quick check — if no identifiers present, skip expensive resolution
+  const identifiers = Array.from(new Set(Array.from(text.matchAll(BARE_ISSUE_RE), m => m[1])));
+  if (identifiers.length === 0) return null;
+
+  // Resolve all identifiers to UUIDs (best-effort; skip on error)
+  const uuidMap = new Map<string, string>();
+  await Promise.all(
+    identifiers.map(async (identifier) => {
+      try {
+        const issue = await getIssue(identifier);
+        uuidMap.set(identifier, issue.id);
+      } catch {
+        // If we can't resolve, we'll leave it as plain text
+      }
+    })
+  );
+
+  // If none resolved, fall back to Markdown
+  if (uuidMap.size === 0) return null;
+
+  const paragraphNodes: TiptapNode[] = [];
+
+  // Split text into lines, build tiptap paragraphs
+  const lines = text.split("\n");
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    const inlineNodes: TiptapNode[] = [];
+
+    let lastIndex = 0;
+    BARE_ISSUE_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = BARE_ISSUE_RE.exec(line)) !== null) {
+      const [fullMatch, identifier] = match;
+      const uuid = uuidMap.get(identifier);
+
+      // Emit preceding text if any
+      if (match.index > lastIndex) {
+        inlineNodes.push({ type: "text", text: line.slice(lastIndex, match.index) });
+      }
+
+      if (uuid) {
+        inlineNodes.push({ type: "issueReference", attrs: { id: uuid } });
+      } else {
+        // Unresolved — emit as plain text
+        inlineNodes.push({ type: "text", text: fullMatch });
+      }
+
+      lastIndex = match.index + fullMatch.length;
+    }
+
+    // Emit trailing text if any
+    if (lastIndex < line.length) {
+      inlineNodes.push({ type: "text", text: line.slice(lastIndex) });
+    }
+
+    const para: TiptapNode = inlineNodes.length > 0
+      ? { type: "paragraph", content: inlineNodes }
+      : { type: "paragraph" };
+    paragraphNodes.push(para);
+  }
+
+  return {
+    type: "doc",
+    content: paragraphNodes
+  };
 }
 
 export async function addComment(issueId: string, body: string): Promise<{ issueId: string; body: string; bodyFile?: string }> {
@@ -286,23 +382,41 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
     finalBody = await fs.readFile(tempFilePath, "utf8");
   }
 
-  const data = await linearGraphQL<CommentCreateResponse>(
-    `
-      mutation AddComment($issueId: String!, $body: String!) {
-        commentCreate(input: { issueId: $issueId, body: $body }) {
-          success
-          comment {
-            id
-            body
+  // Attempt to build tiptap bodyData for native issue references
+  const bodyData = await buildTiptapBody(finalBody);
+
+  let data: CommentCreateResponse;
+  if (bodyData) {
+    data = await linearGraphQL<CommentCreateResponse>(
+      `
+        mutation AddComment($issueId: String!, $bodyData: JSON!) {
+          commentCreate(input: { issueId: $issueId, bodyData: $bodyData }) {
+            success
+            comment {
+              id
+              body
+            }
           }
         }
-      }
-    `,
-    {
-      issueId,
-      body: finalBody
-    }
-  );
+      `,
+      { issueId, bodyData }
+    );
+  } else {
+    data = await linearGraphQL<CommentCreateResponse>(
+      `
+        mutation AddComment($issueId: String!, $body: String!) {
+          commentCreate(input: { issueId: $issueId, body: $body }) {
+            success
+            comment {
+              id
+              body
+            }
+          }
+        }
+      `,
+      { issueId, body: finalBody }
+    );
+  }
 
   if (!data.commentCreate.success || !data.commentCreate.comment) {
     throw new Error(`Failed to create comment for issue ${issueId}.`);
