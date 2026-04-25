@@ -6,16 +6,18 @@ import { linearGraphQL } from "./client";
 import { WorkflowState } from "./types";
 
 /**
- * Maps semantic state names (used by agent commands) to actual Linear workflow state names.
- * This allows agents to use a simplified 6-state model without changing the Linear workspace.
+ * Maps semantic state names (used by agent commands) to candidate Linear workflow state names.
+ * Each semantic state maps to an ordered list of candidates — the first match found in the
+ * team's actual workflow states wins. This handles variations across teams (e.g. "Todo" vs "To Do",
+ * "Doing" vs "In Progress").
  */
-export const SEMANTIC_STATE_MAP: Record<string, string> = {
-  backlog: "Backlog",
-  todo: "Todo",
-  thinking: "Thinking",
-  doing: "Doing",
-  done: "Done",
-  invalid: "Invalid",
+export const SEMANTIC_STATE_MAP: Record<string, string[]> = {
+  backlog: ["Backlog"],
+  todo: ["Todo", "To Do"],
+  thinking: ["Thinking", "In Progress"],
+  doing: ["Doing", "In Progress"],
+  done: ["Done"],
+  invalid: ["Invalid", "Canceled", "Cancelled"],
 };
 
 const STATE_ALIASES: Record<string, string> = {
@@ -109,14 +111,27 @@ export async function findStateByName(teamId: string, alias: string): Promise<Wo
 
 /**
  * Resolve a semantic state name to an actual Linear workflow state.
- * Uses SEMANTIC_STATE_MAP to translate, then falls back to findStateByName.
+ * Iterates through SEMANTIC_STATE_MAP candidates in order, returning the first match
+ * found in the team's workflow states. This handles teams with different naming
+ * conventions (e.g. "Todo" vs "To Do", "Doing" vs "In Progress").
  */
 export async function findSemanticState(teamId: string, semanticName: string): Promise<WorkflowState> {
-  const mappedName = SEMANTIC_STATE_MAP[semanticName.toLowerCase()];
-  if (!mappedName) {
+  const candidates = SEMANTIC_STATE_MAP[semanticName.toLowerCase()];
+  if (!candidates) {
     throw new Error(
       `Unknown semantic state "${semanticName}". Valid options: ${Object.keys(SEMANTIC_STATE_MAP).join(", ")}`
     );
   }
-  return findStateByName(teamId, mappedName);
+
+  const states = await getWorkflowStates(teamId);
+  const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+
+  for (const candidate of candidates) {
+    const match = states.find((s) => normalize(s.name) === normalize(candidate));
+    if (match) return match;
+  }
+
+  throw new Error(
+    `No workflow state found for semantic state "${semanticName}" (tried: ${candidates.join(", ")}) in team ${teamId}. Try: linear states ${teamId} --refresh`
+  );
 }
