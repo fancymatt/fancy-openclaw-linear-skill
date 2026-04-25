@@ -159,12 +159,13 @@ export async function refuseWork(
   const delegate = await findUserByName(delegateName);
   const state = await findSemanticState(teamId, "todo");
 
-  await addComment(issueId, body!);
-
+  // Update issue FIRST — if this fails, no orphaned comment
   await updateIssue(issueId, {
     stateId: state.id,
     delegateId: delegate.id,
   });
+
+  await addComment(issueId, body!);
 
   return {
     command: "refuseWork",
@@ -238,13 +239,14 @@ export async function handoffWork(
   const delegate = await findUserByName(delegateName);
   const state = await findSemanticState(teamId, "todo");
 
-  await addComment(issueId, body!);
-
+  // Update issue FIRST — if this fails, no orphaned comment
   await updateIssue(issueId, {
     stateId: state.id,
     delegateId: delegate.id,
     assigneeId: null,
   });
+
+  await addComment(issueId, body!);
 
   return {
     command: "handoffWork",
@@ -326,13 +328,14 @@ export async function needsHuman(
   const assignee = await findUserByName(assigneeName);
   const state = await findSemanticState(teamId, "todo");
 
-  await addComment(issueId, body!);
-
+  // Update issue FIRST — if this fails, no orphaned comment
   await updateIssue(issueId, {
     stateId: state.id,
     delegateId: null,
     assigneeId: assignee.id,
   });
+
+  await addComment(issueId, body!);
 
   return {
     command: "needsHuman",

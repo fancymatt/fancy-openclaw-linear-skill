@@ -526,7 +526,7 @@ async function main(): Promise<void> {
     await runCommand(async () => considerWork(id), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("refuse-work").alias("refuseWork").argument("<id>").argument("<delegate>").option("--comment <msg>").option("--comment-file <path>").description("Refuse task and delegate to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string }) => {
+  program.command("refuse-work").alias("refuseWork").argument("<id>").argument("<delegate>", "agent display name in quotes, e.g. \"Astrid (CPO)\"").option("--comment <msg>").option("--comment-file <path>").description("Refuse task and delegate to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string }) => {
     await runCommand(async () => refuseWork(id, delegate, options), program.opts<{ human?: boolean }>().human);
   });
 
@@ -534,7 +534,7 @@ async function main(): Promise<void> {
     await runCommand(async () => beginWork(id), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("handoff-work").alias("handoffWork").argument("<id>").argument("<delegate>").option("--comment <msg>").option("--comment-file <path>").description("Hand off task to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string }) => {
+  program.command("handoff-work").alias("handoffWork").argument("<id>").argument("<delegate>", "agent display name in quotes, e.g. \"Charles (CTO)\"").option("--comment <msg>").option("--comment-file <path>").description("Hand off task to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string }) => {
     await runCommand(async () => handoffWork(id, delegate, options), program.opts<{ human?: boolean }>().human);
   });
 
@@ -542,7 +542,7 @@ async function main(): Promise<void> {
     await runCommand(async () => complete(id, options), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("needs-human").alias("needsHuman").argument("<id>").argument("<assignee>").option("--comment <msg>").option("--comment-file <path>").description("Escalate to human for action").action(async (id: string, assignee: string, options: { comment?: string; commentFile?: string }) => {
+  program.command("needs-human").alias("needsHuman").argument("<id>").argument("<assignee>", "human display name in quotes, e.g. \"Matt Henry\"").option("--comment <msg>").option("--comment-file <path>").description("Escalate to human for action").action(async (id: string, assignee: string, options: { comment?: string; commentFile?: string }) => {
     await runCommand(async () => needsHuman(id, assignee, options), program.opts<{ human?: boolean }>().human);
   });
 

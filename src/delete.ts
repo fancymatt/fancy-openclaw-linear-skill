@@ -25,8 +25,8 @@ interface DeleteCommentResponse {
 export async function deleteComment(commentId: string): Promise<{ success: boolean; id: string }> {
   const data = await linearGraphQL<DeleteCommentResponse>(
     `
-      mutation DeleteComment($id: ID!) {
-        commentDelete(input: { id: $id }) {
+      mutation DeleteComment($id: String!) {
+        commentDelete(id: $id) {
           success
         }
       }
