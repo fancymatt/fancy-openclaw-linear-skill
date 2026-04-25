@@ -1,4 +1,5 @@
 import { linearGraphQL } from "./client";
+import { STATE_FIELDS, TEAM_FIELDS } from "./fragments";
 
 interface SearchResponse {
   issues: {
@@ -27,10 +28,10 @@ export async function searchIssues(query: string, teamId?: string, limit?: numbe
             id
             identifier
             title
-            state { id name type }
+            ${STATE_FIELDS}
             assignee { id name }
             priority
-            team { id key name }
+            ${TEAM_FIELDS}
           }
           pageInfo { hasNextPage endCursor }
         }

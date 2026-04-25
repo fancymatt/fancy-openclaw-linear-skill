@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { linearGraphQL } from "./client";
 import { getSelfUser } from "./auth";
+import { ISSUE_FIELDS, TEAM_FIELDS, STATE_FIELDS, ASSIGNEE_FIELDS, DELEGATE_FIELDS } from "./fragments";
 import { CreateIssueInput, Issue, UpdateIssueInput } from "./types";
 
 interface IssueResponse {
@@ -48,102 +49,7 @@ interface CommentCreateResponse {
   };
 }
 
-const ISSUE_FIELDS = `
-  id
-  identifier
-  title
-  description
-  priority
-  url
-  createdAt
-  updatedAt
-  team {
-    id
-    key
-    name
-  }
-  state {
-    id
-    name
-    type
-    color
-    position
-  }
-  assignee {
-    id
-    name
-    email
-  }
-  delegate {
-    id
-    name
-    email
-  }
-  project {
-    id
-    name
-  }
-  projectMilestone {
-    id
-    name
-    description
-    targetDate
-  }
-  labels {
-    nodes {
-      id
-      name
-      color
-    }
-  }
-  parent {
-    id
-    identifier
-    title
-  }
-  children {
-    nodes {
-      id
-      identifier
-      title
-      state {
-        id
-        name
-        type
-        color
-      }
-    }
-  }
-  relations {
-    nodes {
-      id
-      type
-      issue {
-        id
-        identifier
-        title
-      }
-      relatedIssue {
-        id
-        identifier
-        title
-      }
-    }
-  }
-  comments(last: 50, orderBy: createdAt) {
-    nodes {
-      id
-      body
-      createdAt
-      updatedAt
-      user {
-        id
-        name
-        email
-      }
-    }
-  }
-`;
+// ISSUE_FIELDS imported from ./fragments
 
 interface RawIssue extends Omit<Issue, "milestone" | "labels" | "relations" | "comments" | "children"> {
   projectMilestone?: Issue["milestone"];
@@ -444,9 +350,9 @@ export async function getMyIssues(filterStateNames?: string[]): Promise<Issue[]>
               title
               updatedAt
               priority
-              state { id name type }
-              assignee { id name email }
-              team { id key name }
+              ${STATE_FIELDS}
+              ${ASSIGNEE_FIELDS}
+              ${TEAM_FIELDS}
               project { id name }
             }
           }
@@ -472,9 +378,9 @@ export async function getMyNewIssues(updatedSinceIso?: string): Promise<Issue[]>
               title
               updatedAt
               priority
-              state { id name type }
-              assignee { id name email }
-              team { id key name }
+              ${STATE_FIELDS}
+              ${ASSIGNEE_FIELDS}
+              ${TEAM_FIELDS}
               project { id name }
             }
           }
@@ -508,10 +414,10 @@ export async function getMyQueue(projectName?: string): Promise<Issue[]> {
             title
             updatedAt
             priority
-            state { id name type }
-            assignee { id name email }
-            delegate { id name email }
-            team { id key name }
+            ${STATE_FIELDS}
+            ${ASSIGNEE_FIELDS}
+            ${DELEGATE_FIELDS}
+            ${TEAM_FIELDS}
             project { id name }
           }
         }

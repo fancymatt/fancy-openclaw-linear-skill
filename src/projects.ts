@@ -1,4 +1,5 @@
 import { linearGraphQL } from "./client";
+import { STATE_FIELDS, ASSIGNEE_FIELDS, TEAM_FIELDS } from "./fragments";
 import { Issue, Project, ProjectMilestone } from "./types";
 import { getIssue, updateIssue } from "./issues";
 
@@ -120,9 +121,9 @@ export async function getProjectIssues(projectName: string): Promise<Issue[]> {
                 title
                 updatedAt
                 priority
-                state { id name type }
-                assignee { id name email }
-                team { id key name }
+                ${STATE_FIELDS}
+                ${ASSIGNEE_FIELDS}
+                ${TEAM_FIELDS}
               }
             }
           }

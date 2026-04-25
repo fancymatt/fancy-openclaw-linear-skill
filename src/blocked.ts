@@ -1,4 +1,5 @@
 import { linearGraphQL } from "./client";
+import { STATE_FIELDS, ASSIGNEE_FIELDS, TEAM_FIELDS } from "./fragments";
 
 interface BlockedIssue {
   id: string;
@@ -36,9 +37,9 @@ export async function getMyBlocked(limit?: number): Promise<BlockedIssue[]> {
               title
               updatedAt
               priority
-              state { id name type }
-              assignee { id name email }
-              team { id key name }
+              ${STATE_FIELDS}
+              ${ASSIGNEE_FIELDS}
+              ${TEAM_FIELDS}
               project { id name }
             }
           }
