@@ -54,19 +54,19 @@ The scanner reads every `KEY=VALUE` line, ignores comments and blank lines, and 
 
 ## Agent Name Discovery
 
-When looking for the secret file, the auth system needs to know which agent is running. It tries these sources in order:
+When looking for the secret file, the auth system needs to know which agent is running. It uses two name sources in priority order:
 
-| Source | Example | Notes |
-|---|---|---|
-| `OPENCLAW_AGENT_NAME` | `charles` | Set by OpenClaw runtime |
-| `OPENCLAW_AGENT_ID` | `charles` | Alternative runtime variable |
-| `account_id` | `charles` | OpenClaw account config |
-| `$USER` | `fancymatt` | OS user (less specific) |
-| Home directory basename | `fancymatt` | Last resort, after stripping `workspace-` or `openclaw-` prefix |
+| Priority | Source | Example | Notes |
+|---|---|---|---|
+| 1 | `OPENCLAW_MCP_AGENT_ID` | `charles` | Primary — set by the OpenClaw MCP runtime when invoking the skill |
+| 2 | `OPENCLAW_AGENT_NAME` | `charles` | Explicit user override (e.g. for ad-hoc CLI use) |
+| 3 | `$HOME` basename | `charles` | Fallback — only matched when basename starts with `workspace-` or `openclaw-` |
+
+The first source that produces a name wins. If multiple sources are set and **disagree**, a warning is logged and the highest-priority source is used (no silent wrong-token selection).
 
 The agent name is lowercased and used to build the path: `~/.openclaw/workspace-{name}/.secrets/linear.env`.
 
-The current working directory is also checked: `{cwd}/.secrets/linear.env`. This covers cases where the skill is installed directly inside a workspace directory.
+The current working directory is also checked: `{cwd}/.secrets/linear.env`. This is a separate path-based fallback that covers cases where the skill is invoked from inside a workspace directory.
 
 ## New Agent Onboarding Checklist
 
@@ -94,7 +94,7 @@ Setting up Linear auth for a fresh agent:
    ```
 5. **Expected output:** Your Linear user name, email, and ID printed in human-readable form.
 
-If you see `No Linear API key found for agent ...`, the env file is missing, the key name doesn't match any recognized pattern (`linear` + `api_key`/`developer_token`/`token`), or the agent name isn't being discovered correctly. Check that `OPENCLAW_AGENT_NAME` is set or that the directory name matches.
+If you see `No Linear API key found for agent ...`, the env file is missing, the key name doesn't match any recognized pattern (`linear` + `api_key`/`developer_token`/`token`), or the agent name isn't being discovered correctly. Check that `OPENCLAW_MCP_AGENT_ID` (set automatically by the OpenClaw runtime) or `OPENCLAW_AGENT_NAME` (manual override) is set, or that the directory name matches.
 
 If you see `LINEAR_API_KEY is invalid`, the token was copied incorrectly or has been revoked.
 

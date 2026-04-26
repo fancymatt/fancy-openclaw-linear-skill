@@ -8,34 +8,65 @@ interface ViewerResponse {
   viewer: User;
 }
 
-function candidateNames(): string[] {
-  return [
-    process.env.OPENCLAW_AGENT_NAME,
-    process.env.OPENCLAW_AGENT_ID,
-    process.env.account_id,
-    process.env.USER,
-    path.basename(process.env.HOME ?? "")
-      .replace(/^workspace-/, "")
-      .replace(/^openclaw-/, "")
-  ].filter((value): value is string => Boolean(value));
+interface AgentNameSource {
+  source: string;
+  value: string;
+}
+
+/**
+ * Resolve the current agent's name for workspace-based secret file lookup.
+ *
+ * Priority (highest first):
+ *   1. OPENCLAW_MCP_AGENT_ID — set by the OpenClaw MCP runtime when invoking the skill
+ *   2. OPENCLAW_AGENT_NAME — explicit user override
+ *   3. $HOME basename — only if it matches `workspace-<name>` or `openclaw-<name>`
+ *
+ * If multiple sources resolve to different names, a warning is logged and the
+ * highest-priority source wins. This prevents silent wrong-agent token selection.
+ */
+export function resolveAgentName(): { name?: string; sources: AgentNameSource[] } {
+  const sources: AgentNameSource[] = [];
+
+  const mcpAgent = process.env.OPENCLAW_MCP_AGENT_ID?.trim();
+  if (mcpAgent) sources.push({ source: "OPENCLAW_MCP_AGENT_ID", value: mcpAgent.toLowerCase() });
+
+  const agentName = process.env.OPENCLAW_AGENT_NAME?.trim();
+  if (agentName) sources.push({ source: "OPENCLAW_AGENT_NAME", value: agentName.toLowerCase() });
+
+  const homeBase = path.basename(process.env.HOME ?? "");
+  let pathDerived: string | undefined;
+  if (homeBase.startsWith("workspace-")) {
+    pathDerived = homeBase.slice("workspace-".length);
+  } else if (homeBase.startsWith("openclaw-")) {
+    pathDerived = homeBase.slice("openclaw-".length);
+  }
+  if (pathDerived) sources.push({ source: "$HOME basename", value: pathDerived.toLowerCase() });
+
+  const distinct = [...new Set(sources.map((s) => s.value))];
+  if (distinct.length > 1) {
+    const detail = sources.map((s) => `${s.source}=${s.value}`).join(", ");
+    console.warn(
+      `Linear auth: agent name sources disagree (${detail}). ` +
+      `Using highest-priority source '${sources[0].source}'='${sources[0].value}'. ` +
+      `Set OPENCLAW_AGENT_NAME explicitly to silence this warning.`,
+    );
+  }
+
+  return { name: sources[0]?.value, sources };
 }
 
 function secretFileCandidates(): string[] {
   const home = process.env.HOME;
-  const names = candidateNames().map((name) => name.toLowerCase());
-  const files = new Set<string>();
+  const { name } = resolveAgentName();
+  const files: string[] = [];
 
-  for (const name of names) {
-    if (home) {
-      files.add(path.join(home, `.openclaw/workspace-${name}/.secrets/linear.env`));
-    }
+  if (home && name) {
+    files.push(path.join(home, `.openclaw/workspace-${name}/.secrets/linear.env`));
   }
-
   if (process.cwd()) {
-    files.add(path.join(process.cwd(), ".secrets/linear.env"));
+    files.push(path.join(process.cwd(), ".secrets/linear.env"));
   }
-
-  return [...files];
+  return files;
 }
 
 /**
@@ -112,8 +143,8 @@ export function ensureApiKey(): string {
     }
   }
 
-  const tried = secretFileCandidates().join(", ");
-  const agentName = candidateNames()[0] ?? "unknown";
+  const tried = secretFileCandidates().join(", ") || "(no candidates)";
+  const agentName = resolveAgentName().name ?? "unknown";
   throw new Error(
     `No Linear API key found for agent ${agentName}. Set LINEAR_OAUTH_TOKEN, LINEAR_API_KEY, or LINEAR_DEVELOPER_TOKEN, or provision .secrets/linear.env. Looked in: ${tried}`
   );
