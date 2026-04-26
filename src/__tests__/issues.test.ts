@@ -8,6 +8,7 @@ import {
   createIssue,
   updateIssue,
   addComment,
+  buildProsemirrorBody,
   getMyIssues,
   getMyNewIssues,
   getMyQueue,
@@ -149,6 +150,74 @@ describe("updateIssue", () => {
   });
 });
 
+describe("buildProsemirrorBody", () => {
+  beforeEach(() => {
+    mockedGraphQL.mockReset();
+    _resetWorkspaceUrlKeyCache();
+  });
+
+  it("returns null when text has no issue identifiers", async () => {
+    const result = await buildProsemirrorBody("plain text with no refs");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when no identifiers resolve", async () => {
+    mockedGraphQL.mockResolvedValue({ issues: { nodes: [] } });
+    const result = await buildProsemirrorBody("See FAKE-999 for context.");
+    expect(result).toBeNull();
+  });
+
+  it("builds prosemirror doc with issueMention nodes for resolved identifiers", async () => {
+    mockedGraphQL
+      .mockResolvedValueOnce({
+        issues: { nodes: [{ id: "uuid-424", identifier: "AI-424", title: "Issue references in Linear" }] }
+      })
+      .mockResolvedValueOnce({ organization: { urlKey: "fancymatt" } });
+
+    const result = await buildProsemirrorBody("See AI-424 for context.");
+    expect(result).not.toBeNull();
+    const doc = result as any;
+    expect(doc.type).toBe("doc");
+    expect(doc.content).toHaveLength(1);
+    const para = doc.content[0];
+    expect(para.type).toBe("paragraph");
+    expect(para.content).toHaveLength(3);
+    expect(para.content[0]).toEqual({ type: "text", text: "See " });
+    expect(para.content[1].type).toBe("issueMention");
+    expect(para.content[1].attrs.label).toBe("AI-424");
+    expect(para.content[1].attrs.id).toBe("uuid-424");
+    expect(para.content[1].attrs.title).toBe("Issue references in Linear");
+    expect(para.content[1].attrs.href).toContain("AI-424");
+    expect(para.content[2]).toEqual({ type: "text", text: " for context." });
+  });
+
+  it("skips identifiers inside code blocks", async () => {
+    mockedGraphQL.mockResolvedValue({
+      issues: { nodes: [{ id: "uuid-424", identifier: "AI-424", title: "Test" }] }
+    });
+    const result = await buildProsemirrorBody("Check this: `AI-424`");
+    expect(result).toBeNull();
+  });
+
+  it("handles multiple identifiers in one line", async () => {
+    mockedGraphQL
+      .mockResolvedValueOnce({
+        issues: { nodes: [{ id: "uuid-424", identifier: "AI-424", title: "First issue" }] }
+      })
+      .mockResolvedValueOnce({
+        issues: { nodes: [{ id: "uuid-100", identifier: "AI-100", title: "Second issue" }] }
+      })
+      .mockResolvedValueOnce({ organization: { urlKey: "fancymatt" } });
+
+    const result = await buildProsemirrorBody("See AI-424 and AI-100 together.");
+    const doc = result as any;
+    const mentions = doc.content[0].content.filter((n: any) => n.type === "issueMention");
+    expect(mentions).toHaveLength(2);
+    expect(mentions[0].attrs.label).toBe("AI-424");
+    expect(mentions[1].attrs.label).toBe("AI-100");
+  });
+});
+
 describe("addComment", () => {
   beforeEach(() => {
     mockedGraphQL.mockReset();
@@ -171,8 +240,13 @@ describe("addComment", () => {
   });
 
   it("rewrites bare identifiers to markdown links before posting", async () => {
+    // buildProsemirrorBody tries getIssue(AI-424) first → fails (no issue data in mock)
+    // Then falls through to Markdown rewrite path
+    // getWorkspaceUrlKey() → returns urlKey
+    // Then commentCreate with rewritten Markdown body
     mockedGraphQL
-      .mockResolvedValueOnce({ organization: { urlKey: "myorg" } })
+      .mockResolvedValueOnce({ issues: { nodes: [] } })        // getIssue(AI-424) fails — no match
+      .mockResolvedValueOnce({ organization: { urlKey: "myorg" } }) // getWorkspaceUrlKey
       .mockResolvedValueOnce({ commentCreate: { success: true, comment: { id: "c-2", body: "See [AI-424](https://linear.app/myorg/issue/AI-424) for context." } } });
     const result = await addComment("issue-1", "See AI-424 for context.");
     expect(mockedGraphQL).toHaveBeenCalledWith(

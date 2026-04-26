@@ -193,6 +193,14 @@ export async function updateIssue(id: string, input: UpdateIssueInput): Promise<
 const BARE_ISSUE_RE = /\b([A-Z]{2,10}-\d+)\b/g;
 const HAS_BARE_ISSUE_RE = /\b[A-Z]{2,10}-\d+\b/;
 
+// Regex that skips bare identifiers inside code blocks, code spans, markdown links, or URLs
+const SKIP_PATTERNS: RegExp[] = [
+  /```[\s\S]*?```/g,
+  /`[^`\n]+`/g,
+  /!?\[[^\]]*\]\([^)]*\)/g,
+  /https?:\/\/\S+/g
+];
+
 let cachedWorkspaceUrlKey: string | undefined;
 
 interface OrganizationResponse {
@@ -214,13 +222,7 @@ export async function getWorkspaceUrlKey(): Promise<string> {
 
 function findSkipRanges(text: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
-  const patterns: RegExp[] = [
-    /```[\s\S]*?```/g,            // fenced code blocks
-    /`[^`\n]+`/g,                  // inline code spans
-    /!?\[[^\]]*\]\([^)]*\)/g,     // existing markdown links / images
-    /https?:\/\/\S+/g              // bare URLs
-  ];
-  for (const re of patterns) {
+  for (const re of SKIP_PATTERNS) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
@@ -271,6 +273,132 @@ async function rewriteWithWorkspaceLinks(text: string): Promise<string> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Prosemirror bodyData for native Linear issue mentions
+// ---------------------------------------------------------------------------
+
+interface ProsemirrorIssueMention {
+  type: "issueMention";
+  attrs: {
+    id: string;
+    label: string;
+    href: string;
+    title: string;
+  };
+}
+
+type ProsemirrorNode =
+  | { type: "doc"; content: ProsemirrorNode[] }
+  | { type: "paragraph"; content: ProsemirrorNode[] }
+  | { type: "text"; text: string }
+  | ProsemirrorIssueMention;
+
+/**
+ * Build a Prosemirror JSON document from plain text, replacing bare issue
+ * identifiers with native `issueMention` nodes.
+ * Returns null if no resolvable identifiers are found (caller falls back
+ * to plain Markdown or link-rewritten Markdown).
+ *
+ * Linear's Prosemirror schema expects `issueMention` nodes (not
+ * `issueReference`) with attrs: { id, label, href, title }.
+ */
+export async function buildProsemirrorBody(text: string): Promise<object | null> {
+  // Quick check — skip if no identifiers present
+  if (!HAS_BARE_ISSUE_RE.test(text)) return null;
+
+  // Find skip ranges (code blocks, links, URLs) so we don't touch identifiers there
+  const skipRanges = findSkipRanges(text);
+
+  // Collect unique identifiers that are NOT in skip ranges
+  const identifiers = new Set<string>();
+  BARE_ISSUE_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = BARE_ISSUE_RE.exec(text)) !== null) {
+    if (!inAnyRange(m.index, skipRanges)) {
+      identifiers.add(m[1]);
+    }
+  }
+  if (identifiers.size === 0) return null;
+
+  // Resolve identifiers to issue metadata (best-effort)
+  const issueMap = new Map<string, { id: string; identifier: string; title: string }>();
+  await Promise.all(
+    [...identifiers].map(async (identifier) => {
+      try {
+        const issue = await getIssue(identifier);
+        issueMap.set(identifier, { id: issue.id, identifier: issue.identifier, title: issue.title });
+      } catch {
+        // Can't resolve — leave as plain text
+      }
+    })
+  );
+
+  if (issueMap.size === 0) return null;
+
+  // Get workspace URL key for building hrefs
+  let urlKey: string;
+  try {
+    urlKey = await getWorkspaceUrlKey();
+  } catch {
+    return null; // Can't build proper hrefs without urlKey
+  }
+
+  // Build Prosemirror doc
+  const paragraphNodes: ProsemirrorNode[] = [];
+  const lines = text.split("\n");
+
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    const inlineNodes: ProsemirrorNode[] = [];
+    let lastIndex = 0;
+
+    BARE_ISSUE_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = BARE_ISSUE_RE.exec(line)) !== null) {
+      const [fullMatch, identifier] = match;
+      const issueInfo = issueMap.get(identifier);
+
+      // Skip identifiers inside code blocks/links/URLs or unresolvable ones
+      if (inAnyRange(match.index, skipRanges) || !issueInfo) {
+        continue;
+      }
+
+      // Emit preceding text
+      if (match.index > lastIndex) {
+        inlineNodes.push({ type: "text", text: line.slice(lastIndex, match.index) });
+      }
+
+      // Emit issueMention node
+      const slug = issueInfo.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 60);
+      inlineNodes.push({
+        type: "issueMention",
+        attrs: {
+          id: issueInfo.id,
+          label: issueInfo.identifier,
+          href: `https://linear.app/${urlKey}/issue/${issueInfo.identifier}/${slug}`,
+          title: issueInfo.title
+        }
+      });
+
+      lastIndex = match.index + fullMatch.length;
+    }
+
+    // Emit trailing text
+    if (lastIndex < line.length) {
+      inlineNodes.push({ type: "text", text: line.slice(lastIndex) });
+    }
+
+    // Build paragraph — always include content array (even if empty)
+    paragraphNodes.push({ type: "paragraph", content: inlineNodes });
+  }
+
+  return { type: "doc", content: paragraphNodes };
+}
+
 export async function addComment(issueId: string, body: string): Promise<{ issueId: string; commentId: string; body: string; bodyFile?: string }> {
   // Unescape literal \n sequences that shell interpolation often produces
   let finalBody = body.replace(/\\n/g, "\n");
@@ -282,7 +410,39 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
     finalBody = await fs.readFile(tempFilePath, "utf8");
   }
 
-  // Rewrite bare issue identifiers to clickable Markdown links
+  // Strategy 1: try Prosemirror bodyData with native issueMention nodes
+  try {
+    const bodyData = await buildProsemirrorBody(finalBody);
+    if (bodyData) {
+      const data = await linearGraphQL<CommentCreateResponse>(
+        `
+          mutation AddComment($issueId: String!, $bodyData: JSON!) {
+            commentCreate(input: { issueId: $issueId, bodyData: $bodyData }) {
+              success
+              comment {
+                id
+                body
+              }
+            }
+          }
+        `,
+        { issueId, bodyData: JSON.stringify(bodyData) }
+      );
+
+      if (data.commentCreate.success && data.commentCreate.comment) {
+        return {
+          issueId,
+          commentId: data.commentCreate.comment.id,
+          body: data.commentCreate.comment.body,
+          bodyFile: tempFilePath
+        };
+      }
+    }
+  } catch {
+    // Prosemirror path failed — fall through to Markdown
+  }
+
+  // Strategy 2: Markdown with rewritten issue links
   finalBody = await rewriteWithWorkspaceLinks(finalBody);
 
   const data = await linearGraphQL<CommentCreateResponse>(
