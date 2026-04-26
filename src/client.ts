@@ -1,21 +1,81 @@
 import axios from "axios";
 
 import { ensureApiKey } from "./auth";
+import { debugDump, isDebugMode } from "./debug";
 
 const LINEAR_API_URL = "https://api.linear.app/graphql";
 
+export interface GraphQLErrorDetail {
+  message: string;
+  path?: (string | number)[];
+  extensions?: Record<string, unknown>;
+}
+
 interface LinearGraphQLResponse<T> {
   data?: T;
-  errors?: Array<{ message: string }>;
+  errors?: GraphQLErrorDetail[];
+}
+
+interface HintRule {
+  test: (msg: string) => boolean;
+  hint: string;
+}
+
+const HINT_RULES: HintRule[] = [
+  {
+    test: (msg) => /self.?reference|cannot reference/i.test(msg),
+    hint: "Comment body contains a bare issue identifier that references the issue itself. Replace hyphens with em-dashes (—) or spell out the ID.",
+  },
+  {
+    test: (msg) => /too long|exceeds.*length|max.*length/i.test(msg),
+    hint: "Comment body exceeds the maximum length. Split into multiple comments or shorten.",
+  },
+  {
+    test: (msg) => /team/.test(msg) && /label/i.test(msg),
+    hint: "Label belongs to a different team than the issue. Use a label from the same team, or check the team prefix.",
+  },
+];
+
+function resolveHint(message: string): string | undefined {
+  for (const rule of HINT_RULES) {
+    if (rule.test(message)) return rule.hint;
+  }
+  if (/Argument Validation Error/i.test(message)) {
+    return "A field failed validation. Re-run with --debug to see the raw GraphQL error details.";
+  }
+  return undefined;
+}
+
+function enrichMessage(errors: GraphQLErrorDetail[]): string {
+  const parts: string[] = [];
+
+  for (const err of errors) {
+    const fieldPath = err.path?.join(".");
+    const hint = resolveHint(err.message);
+
+    parts.push(err.message);
+
+    if (fieldPath) {
+      parts.push(`  ↳ field: ${fieldPath}`);
+    }
+
+    if (hint) {
+      parts.push(`  ↳ hint: ${hint}`);
+    }
+  }
+
+  return parts.join("\n");
 }
 
 export class LinearApiError extends Error {
   code?: string;
+  details?: GraphQLErrorDetail[];
 
-  constructor(message: string, code?: string) {
+  constructor(message: string, code?: string, details?: GraphQLErrorDetail[]) {
     super(message);
     this.name = "LinearApiError";
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -32,21 +92,22 @@ export async function linearGraphQL<T>(
       {
         headers: {
           Authorization: apiKey,
-          "Content-Type": "application/json"
-        }
+          "Content-Type": "application/json",
+        },
       }
     );
   } catch (error) {
     if (axios.isAxiosError(error)) {
       if (error.response) {
-        const graphqlErrors = error.response.data?.errors?.map((e: {message: string}) => e.message).join("; ");
+        const errors = (error.response.data?.errors ?? []) as GraphQLErrorDetail[];
         if (error.response.status === 401) {
           throw new LinearApiError("Unauthorized", "UNAUTHORIZED");
         }
-        throw new LinearApiError(
-          graphqlErrors || `Linear API returned HTTP ${error.response.status}: ${error.response.statusText}`,
-          `HTTP_${error.response.status}`
-        );
+        debugDump("HTTP error response", error.response.data);
+        const message = errors.length
+          ? enrichMessage(errors)
+          : `Linear API returned HTTP ${error.response.status}: ${error.response.statusText}`;
+        throw new LinearApiError(message, `HTTP_${error.response.status}`, errors);
       }
       throw new LinearApiError(
         `Network request to Linear API failed: ${error.message}. Check your internet connection and that api.linear.app is reachable.`,
@@ -57,9 +118,11 @@ export async function linearGraphQL<T>(
   }
 
   if (response.data.errors?.length) {
+    debugDump("GraphQL errors", response.data.errors);
     throw new LinearApiError(
-      response.data.errors.map((error) => error.message).join("; "),
-      "GRAPHQL_ERROR"
+      enrichMessage(response.data.errors),
+      "GRAPHQL_ERROR",
+      response.data.errors
     );
   }
 
@@ -78,7 +141,7 @@ export async function putPresignedFile(
 ): Promise<void> {
   const headers: Record<string, string> = {
     "Content-Type": contentType,
-    "Content-Length": String(content.byteLength)
+    "Content-Length": String(content.byteLength),
   };
 
   for (const header of extraHeaders ?? []) {
@@ -86,6 +149,6 @@ export async function putPresignedFile(
   }
 
   await axios.put(url, content, {
-    headers
+    headers,
   });
 }

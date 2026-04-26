@@ -9,7 +9,7 @@ import { getBoard, getReviewQueue, getStalled } from "./boards";
 import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue, note } from "./semantic";
 import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue } from "./issues";
 import { attachIssueToMilestone, attachIssueToProject, createMilestone, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
-import { createBlockingRelation, listRelations, removeBlockingRelation } from "./relations";
+import { createBlockingRelation, listRelations, removeBlockingRelation, setParent, removeParent } from "./relations";
 import { findStateByName, getWorkflowStates } from "./states";
 import { listTeams, resolveTeamId } from "./teams";
 import { uploadFile } from "./upload";
@@ -17,7 +17,8 @@ import { deleteIssue, deleteComment } from "./delete";
 import { listLabels, addLabels, removeLabels } from "./labels";
 import { searchIssues } from "./search";
 import { linearTest } from "./test";
-import { linearGraphQL } from "./client";
+import { linearGraphQL, LinearApiError } from "./client";
+import { setDebugMode, isDebugMode } from "./debug";
 import { CreateIssueInput, UpdateIssueInput } from "./types";
 
 interface NotificationsResponse {
@@ -99,6 +100,9 @@ async function runCommand(handler: () => Promise<unknown>, human = false): Promi
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);
+    if (isDebugMode() && error instanceof LinearApiError && error.details?.length) {
+      process.stderr.write(`[DEBUG] Raw GraphQL error details: ${JSON.stringify(error.details, null, 2)}\n`);
+    }
     process.exitCode = 1;
   }
 }
@@ -114,7 +118,8 @@ function deprecationWarn(cmd: string, noWarn?: boolean): void {
 
 async function main(): Promise<void> {
   const program = new Command();
-  program.name("linear").description("Linear CLI for OpenClaw").option("--human", "Use readable output");
+  program.name("linear").description("Linear CLI for OpenClaw").option("--human", "Use readable output").option("--debug", "Dump raw GraphQL errors to stderr");
+  setDebugMode(!!program.opts<{ debug?: boolean }>().debug);
 
   const auth = program.command("auth").description("Auth operations");
   auth.command("check").description("Verify auth").action(async () => {
@@ -322,6 +327,14 @@ async function main(): Promise<void> {
   program.command("unblock").argument("<id>").requiredOption("--blocked-by <issueId>").action(async (id: string, options: { blockedBy: string }) => {
     await runCommand(async () => removeBlockingRelation(id, options.blockedBy), program.opts<{ human?: boolean }>().human);
   });
+  program.command("parent").argument("<id>").argument("<parentId>").description("Set parent issue (makes <id> a sub-issue of <parentId>)").action(async (id: string, parentId: string) => {
+    await runCommand(async () => setParent(id, parentId), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("unparent").argument("<id>").description("Remove parent relationship from issue").action(async (id: string) => {
+    await runCommand(async () => removeParent(id), program.opts<{ human?: boolean }>().human);
+  });
+
   program.command("subtask").argument("<team>").argument("<title>").requiredOption("--parent <id>").action(async (team: string, title: string, options: { parent: string }) => {
     await runCommand(async () => {
       const teamId = await resolveTeamId(team);

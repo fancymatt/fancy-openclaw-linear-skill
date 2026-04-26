@@ -5,6 +5,15 @@ description: Use the Linear CLI for issue management, delegation, and project wo
 
 # Linear CLI Quick Reference
 
+## Debugging
+
+- Add `--debug` to any command to dump raw GraphQL errors to stderr when something fails. Useful for diagnosing opaque validation errors.
+- Common validation errors and their workarounds:
+  - **Self-reference in comment body** → bare ticket ID detected; use em-dashes (—) or spell out the ID
+  - **Comment too long** → exceeds max length; split into multiple comments or shorten
+  - **Team/label mismatch** → label from wrong team; use a label from the issue's team
+  - **Generic Argument Validation Error** → re-run with `--debug` to inspect which field failed
+
 ## Core Semantics — Know These
 
 ### Assignee vs Delegate
