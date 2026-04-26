@@ -12,7 +12,9 @@ import {
   getMyNewIssues,
   getMyQueue,
   findUserByName,
-  buildTiptapBody
+  rewriteIssueLinks,
+  getWorkspaceUrlKey,
+  _resetWorkspaceUrlKeyCache
 } from "../issues";
 
 jest.mock("../client", () => ({
@@ -109,7 +111,10 @@ describe("createIssue", () => {
 });
 
 describe("updateIssue", () => {
-  beforeEach(() => mockedGraphQL.mockReset());
+  beforeEach(() => {
+    mockedGraphQL.mockReset();
+    _resetWorkspaceUrlKeyCache();
+  });
 
   it("updates issue and returns fetched result", async () => {
     mockedGraphQL
@@ -118,6 +123,24 @@ describe("updateIssue", () => {
 
     const result = await updateIssue("issue-uuid-1", { title: "Updated" });
     expect(result.title).toBe("Updated");
+    expect(mockedGraphQL).not.toHaveBeenCalledWith(expect.stringContaining("descriptionData"), expect.anything());
+  });
+
+  it("rewrites bare identifiers in description before posting", async () => {
+    mockedGraphQL
+      .mockResolvedValueOnce({ organization: { urlKey: "myorg" } })
+      .mockResolvedValueOnce({ issueUpdate: { success: true, issue: { id: "issue-uuid-1" } } })
+      .mockResolvedValueOnce({ issue: mockIssue });
+
+    await updateIssue("issue-uuid-1", { description: "See AI-100 for context." });
+    expect(mockedGraphQL).toHaveBeenCalledWith(
+      expect.stringContaining("UpdateIssue"),
+      expect.objectContaining({
+        input: expect.objectContaining({
+          description: "See [AI-100](https://linear.app/myorg/issue/AI-100) for context."
+        })
+      })
+    );
   });
 
   it("throws when update mutation fails", async () => {
@@ -127,28 +150,47 @@ describe("updateIssue", () => {
 });
 
 describe("addComment", () => {
-  beforeEach(() => mockedGraphQL.mockReset());
+  beforeEach(() => {
+    mockedGraphQL.mockReset();
+    _resetWorkspaceUrlKeyCache();
+  });
 
-  it("posts comment inline", async () => {
+  it("posts comment via body (Markdown) path", async () => {
     mockedGraphQL.mockResolvedValue({
       commentCreate: { success: true, comment: { id: "c-1", body: "Hello" } }
     });
     const result = await addComment("issue-1", "Hello");
     expect(result.body).toBe("Hello");
     expect(result.issueId).toBe("issue-1");
+    // Should send body, never bodyData
+    expect(mockedGraphQL).toHaveBeenCalledWith(
+      expect.stringContaining("$body: String!"),
+      expect.objectContaining({ body: "Hello" })
+    );
+    expect(mockedGraphQL).not.toHaveBeenCalledWith(expect.stringContaining("bodyData"), expect.anything());
+  });
+
+  it("rewrites bare identifiers to markdown links before posting", async () => {
+    mockedGraphQL
+      .mockResolvedValueOnce({ organization: { urlKey: "myorg" } })
+      .mockResolvedValueOnce({ commentCreate: { success: true, comment: { id: "c-2", body: "See [AI-424](https://linear.app/myorg/issue/AI-424) for context." } } });
+    const result = await addComment("issue-1", "See AI-424 for context.");
+    expect(mockedGraphQL).toHaveBeenCalledWith(
+      expect.stringContaining("$body: String!"),
+      expect.objectContaining({ body: "See [AI-424](https://linear.app/myorg/issue/AI-424) for context." })
+    );
+    expect(result.commentId).toBe("c-2");
   });
 
   it("unescapes literal \\n sequences", async () => {
     mockedGraphQL.mockResolvedValue({
-      commentCreate: { success: true, comment: { id: "c-2", body: "line1\nline2" } }
+      commentCreate: { success: true, comment: { id: "c-3", body: "line1\nline2" } }
     });
     const result = await addComment("issue-1", "line1\\nline2");
     expect(result.body).toBe("line1\nline2");
   });
 
   it("crashes on undefined body (known bug: guard runs after .replace)", async () => {
-    // BUG: addComment calls body.replace() before the !finalBody guard, so
-    // undefined causes a TypeError instead of the intended error message.
     await expect(addComment("issue-1", undefined as any)).rejects.toThrow("Cannot read properties of undefined");
   });
 
@@ -289,55 +331,80 @@ describe("findUserByName", () => {
   });
 });
 
-describe("buildTiptapBody", () => {
-  beforeEach(() => mockedGraphQL.mockReset());
+describe("rewriteIssueLinks", () => {
+  const KEY = "fancymatt";
 
-  it("returns null when no issue identifiers found", async () => {
-    const result = await buildTiptapBody("This is a plain comment with no refs.");
-    expect(result).toBeNull();
+  it("returns text unchanged when no identifiers present", () => {
+    const text = "This is a plain comment with no refs.";
+    expect(rewriteIssueLinks(text, KEY)).toBe(text);
   });
 
-  it("builds tiptap doc with a single issue reference", async () => {
-    mockedGraphQL.mockResolvedValue({
-      issues: { nodes: [{ ...mockIssue, id: "uuid-ai-424", identifier: "AI-424" }] }
-    });
-    const result = await buildTiptapBody("See AI-424 for context.") as any;
-    expect(result).not.toBeNull();
-    expect(result.type).toBe("doc");
-    const para = result.content[0];
-    expect(para.type).toBe("paragraph");
-    const nodes = para.content;
-    expect(nodes.some((n: any) => n.type === "issueReference" && n.attrs.id === "uuid-ai-424")).toBe(true);
-    expect(nodes.some((n: any) => n.type === "text" && n.text.includes("See "))).toBe(true);
+  it("rewrites a single bare identifier to a markdown link", () => {
+    const result = rewriteIssueLinks("See AI-424 for context.", KEY);
+    expect(result).toBe("See [AI-424](https://linear.app/fancymatt/issue/AI-424) for context.");
   });
 
-  it("builds tiptap doc with multiple issue references", async () => {
-    mockedGraphQL
-      .mockResolvedValueOnce({ issues: { nodes: [{ ...mockIssue, id: "uuid-ai-100", identifier: "AI-100" }] } })
-      .mockResolvedValueOnce({ issues: { nodes: [{ ...mockIssue, id: "uuid-ai-200", identifier: "AI-200" }] } });
-    const result = await buildTiptapBody("Work on AI-100 and AI-200 together.") as any;
-    expect(result).not.toBeNull();
-    const para = result.content[0];
-    const refNodes = para.content.filter((n: any) => n.type === "issueReference");
-    expect(refNodes).toHaveLength(2);
-    expect(refNodes.map((n: any) => n.attrs.id).sort()).toEqual(["uuid-ai-100", "uuid-ai-200"].sort());
+  it("rewrites multiple identifiers", () => {
+    const result = rewriteIssueLinks("Work on AI-100 and AI-200 together.", KEY);
+    expect(result).toBe(
+      "Work on [AI-100](https://linear.app/fancymatt/issue/AI-100) and [AI-200](https://linear.app/fancymatt/issue/AI-200) together."
+    );
   });
 
-  it("falls back to null when identifier cannot be resolved", async () => {
-    mockedGraphQL.mockRejectedValue(new Error("Issue not found: FAKE-999"));
-    const result = await buildTiptapBody("Reference to FAKE-999 here.");
-    // All identifiers failed to resolve — should return null
-    expect(result).toBeNull();
+  it("rewrites identifier mid-sentence with surrounding punctuation", () => {
+    const result = rewriteIssueLinks("Inaccuracies (FCY-320, LIFE-60): fix now.", KEY);
+    expect(result).toBe(
+      "Inaccuracies ([FCY-320](https://linear.app/fancymatt/issue/FCY-320), [LIFE-60](https://linear.app/fancymatt/issue/LIFE-60)): fix now."
+    );
   });
 
-  it("handles reference mid-sentence correctly", async () => {
-    mockedGraphQL.mockResolvedValue({
-      issues: { nodes: [{ ...mockIssue, id: "uuid-fcx-5", identifier: "FCX-5" }] }
-    });
-    const result = await buildTiptapBody("Blocked by FCX-5 until further notice.") as any;
-    const para = result.content[0];
-    const texts = para.content.filter((n: any) => n.type === "text").map((n: any) => n.text);
-    expect(texts.some((t: string) => t.includes("Blocked by "))).toBe(true);
-    expect(texts.some((t: string) => t.includes(" until further notice."))).toBe(true);
+  it("skips identifier inside fenced code block", () => {
+    const text = "See:\n```\nAI-424 in code\n```\nend.";
+    expect(rewriteIssueLinks(text, KEY)).toBe(text);
+  });
+
+  it("skips identifier inside inline code span", () => {
+    const text = "See `AI-424` for details.";
+    expect(rewriteIssueLinks(text, KEY)).toBe(text);
+  });
+
+  it("skips identifier already inside an existing markdown link", () => {
+    const text = "Already linked [AI-424](https://linear.app/fancymatt/issue/AI-424) here.";
+    expect(rewriteIssueLinks(text, KEY)).toBe(text);
+  });
+
+  it("skips identifier inside a bare URL", () => {
+    const text = "See https://linear.app/fancymatt/issue/AI-424 for context.";
+    expect(rewriteIssueLinks(text, KEY)).toBe(text);
+  });
+
+  it("rewrites identifier outside code fence but not one inside", () => {
+    const text = "See AI-100.\n```\nAI-200 in fence\n```\nDone AI-300.";
+    const result = rewriteIssueLinks(text, KEY);
+    expect(result).toContain("[AI-100](https://linear.app/fancymatt/issue/AI-100)");
+    expect(result).toContain("[AI-300](https://linear.app/fancymatt/issue/AI-300)");
+    expect(result).toContain("AI-200 in fence");
+    expect(result).not.toContain("[AI-200]");
+  });
+});
+
+describe("getWorkspaceUrlKey", () => {
+  beforeEach(() => {
+    mockedGraphQL.mockReset();
+    _resetWorkspaceUrlKeyCache();
+  });
+
+  it("fetches urlKey from organization query", async () => {
+    mockedGraphQL.mockResolvedValue({ organization: { urlKey: "testorg" } });
+    const key = await getWorkspaceUrlKey();
+    expect(key).toBe("testorg");
+    expect(mockedGraphQL).toHaveBeenCalledWith(expect.stringContaining("OrganizationUrlKey"));
+  });
+
+  it("caches the result on subsequent calls", async () => {
+    mockedGraphQL.mockResolvedValue({ organization: { urlKey: "testorg" } });
+    await getWorkspaceUrlKey();
+    await getWorkspaceUrlKey();
+    expect(mockedGraphQL).toHaveBeenCalledTimes(1);
   });
 });

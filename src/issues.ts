@@ -157,14 +157,9 @@ export async function createIssue(input: CreateIssueInput): Promise<Issue> {
 }
 
 export async function updateIssue(id: string, input: UpdateIssueInput): Promise<Issue> {
-  // If description contains bare issue identifiers, upgrade to descriptionData
-  let resolvedInput: UpdateIssueInput & { descriptionData?: object } = { ...input };
+  const resolvedInput: UpdateIssueInput = { ...input };
   if (input.description) {
-    const descData = await buildTiptapBody(input.description);
-    if (descData) {
-      const { description: _desc, ...rest } = resolvedInput;
-      resolvedInput = { ...rest, descriptionData: descData } as typeof resolvedInput;
-    }
+    resolvedInput.description = await rewriteWithWorkspaceLinks(input.description);
   }
 
   const data = await linearGraphQL<UpdateIssueMutationResponse>(
@@ -192,89 +187,88 @@ export async function updateIssue(id: string, input: UpdateIssueInput): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// Tiptap bodyData helpers for native Linear issue references
+// Issue-identifier rewriting for clickable Markdown links
 // ---------------------------------------------------------------------------
 
 const BARE_ISSUE_RE = /\b([A-Z]{2,10}-\d+)\b/g;
+const HAS_BARE_ISSUE_RE = /\b[A-Z]{2,10}-\d+\b/;
 
-type TiptapNode =
-  | { type: "doc"; content: TiptapNode[] }
-  | { type: "paragraph"; content?: TiptapNode[] }
-  | { type: "text"; text: string; marks?: Array<{ type: string }> }
-  | { type: "hardBreak" }
-  | { type: "issueReference"; attrs: { id: string } };
+let cachedWorkspaceUrlKey: string | undefined;
+
+interface OrganizationResponse {
+  organization: { urlKey: string };
+}
+
+export function _resetWorkspaceUrlKeyCache(): void {
+  cachedWorkspaceUrlKey = undefined;
+}
+
+export async function getWorkspaceUrlKey(): Promise<string> {
+  if (cachedWorkspaceUrlKey) return cachedWorkspaceUrlKey;
+  const data = await linearGraphQL<OrganizationResponse>(
+    `query OrganizationUrlKey { organization { urlKey } }`
+  );
+  cachedWorkspaceUrlKey = data.organization.urlKey;
+  return cachedWorkspaceUrlKey;
+}
+
+function findSkipRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const patterns: RegExp[] = [
+    /```[\s\S]*?```/g,            // fenced code blocks
+    /`[^`\n]+`/g,                  // inline code spans
+    /!?\[[^\]]*\]\([^)]*\)/g,     // existing markdown links / images
+    /https?:\/\/\S+/g              // bare URLs
+  ];
+  for (const re of patterns) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      ranges.push([m.index, m.index + m[0].length]);
+    }
+  }
+  return ranges;
+}
+
+function inAnyRange(idx: number, ranges: Array<[number, number]>): boolean {
+  for (const [s, e] of ranges) {
+    if (idx >= s && idx < e) return true;
+  }
+  return false;
+}
 
 /**
- * Build a tiptap JSON document from plain text, replacing bare issue
- * identifiers (e.g. AI-424) with native issueReference nodes.
- * Returns null if no issue identifiers are found (caller falls back to Markdown).
+ * Rewrite bare Linear issue identifiers (e.g. AI-424) into Markdown links
+ * pointing at the workspace URL, skipping identifiers that appear inside
+ * code blocks, code spans, existing Markdown links, or bare URLs.
  */
-export async function buildTiptapBody(text: string): Promise<object | null> {
-  // Quick check — if no identifiers present, skip expensive resolution
-  const identifiers = Array.from(new Set(Array.from(text.matchAll(BARE_ISSUE_RE), m => m[1])));
-  if (identifiers.length === 0) return null;
-
-  // Resolve all identifiers to UUIDs (best-effort; skip on error)
-  const uuidMap = new Map<string, string>();
-  await Promise.all(
-    identifiers.map(async (identifier) => {
-      try {
-        const issue = await getIssue(identifier);
-        uuidMap.set(identifier, issue.id);
-      } catch {
-        // If we can't resolve, we'll leave it as plain text
-      }
-    })
-  );
-
-  // If none resolved, fall back to Markdown
-  if (uuidMap.size === 0) return null;
-
-  const paragraphNodes: TiptapNode[] = [];
-
-  // Split text into lines, build tiptap paragraphs
-  const lines = text.split("\n");
-  for (let li = 0; li < lines.length; li++) {
-    const line = lines[li];
-    const inlineNodes: TiptapNode[] = [];
-
-    let lastIndex = 0;
-    BARE_ISSUE_RE.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = BARE_ISSUE_RE.exec(line)) !== null) {
-      const [fullMatch, identifier] = match;
-      const uuid = uuidMap.get(identifier);
-
-      // Emit preceding text if any
-      if (match.index > lastIndex) {
-        inlineNodes.push({ type: "text", text: line.slice(lastIndex, match.index) });
-      }
-
-      if (uuid) {
-        inlineNodes.push({ type: "issueReference", attrs: { id: uuid } });
-      } else {
-        // Unresolved — emit as plain text
-        inlineNodes.push({ type: "text", text: fullMatch });
-      }
-
-      lastIndex = match.index + fullMatch.length;
-    }
-
-    // Emit trailing text if any
-    if (lastIndex < line.length) {
-      inlineNodes.push({ type: "text", text: line.slice(lastIndex) });
-    }
-
-    const para: TiptapNode = inlineNodes.length > 0
-      ? { type: "paragraph", content: inlineNodes }
-      : { type: "paragraph" };
-    paragraphNodes.push(para);
+export function rewriteIssueLinks(text: string, urlKey: string): string {
+  if (!HAS_BARE_ISSUE_RE.test(text)) return text;
+  const skipRanges = findSkipRanges(text);
+  const matches: { index: number; length: number; id: string }[] = [];
+  BARE_ISSUE_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = BARE_ISSUE_RE.exec(text)) !== null) {
+    matches.push({ index: m.index, length: m[0].length, id: m[1] });
   }
+  let result = text;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const { index, length, id } = matches[i];
+    if (inAnyRange(index, skipRanges)) continue;
+    const url = `https://linear.app/${urlKey}/issue/${id}`;
+    result = result.slice(0, index) + `[${id}](${url})` + result.slice(index + length);
+  }
+  return result;
+}
 
-  return {
-    type: "doc",
-    content: paragraphNodes
-  };
+async function rewriteWithWorkspaceLinks(text: string): Promise<string> {
+  if (!HAS_BARE_ISSUE_RE.test(text)) return text;
+  try {
+    const urlKey = await getWorkspaceUrlKey();
+    return rewriteIssueLinks(text, urlKey);
+  } catch {
+    return text;
+  }
 }
 
 export async function addComment(issueId: string, body: string): Promise<{ issueId: string; commentId: string; body: string; bodyFile?: string }> {
@@ -288,41 +282,23 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
     finalBody = await fs.readFile(tempFilePath, "utf8");
   }
 
-  // Attempt to build tiptap bodyData for native issue references
-  const bodyData = await buildTiptapBody(finalBody);
+  // Rewrite bare issue identifiers to clickable Markdown links
+  finalBody = await rewriteWithWorkspaceLinks(finalBody);
 
-  let data: CommentCreateResponse;
-  if (bodyData) {
-    data = await linearGraphQL<CommentCreateResponse>(
-      `
-        mutation AddComment($issueId: String!, $bodyData: JSON!) {
-          commentCreate(input: { issueId: $issueId, bodyData: $bodyData }) {
-            success
-            comment {
-              id
-              body
-            }
+  const data = await linearGraphQL<CommentCreateResponse>(
+    `
+      mutation AddComment($issueId: String!, $body: String!) {
+        commentCreate(input: { issueId: $issueId, body: $body }) {
+          success
+          comment {
+            id
+            body
           }
         }
-      `,
-      { issueId, bodyData }
-    );
-  } else {
-    data = await linearGraphQL<CommentCreateResponse>(
-      `
-        mutation AddComment($issueId: String!, $body: String!) {
-          commentCreate(input: { issueId: $issueId, body: $body }) {
-            success
-            comment {
-              id
-              body
-            }
-          }
-        }
-      `,
-      { issueId, body: finalBody }
-    );
-  }
+      }
+    `,
+    { issueId, body: finalBody }
+  );
 
   if (!data.commentCreate.success || !data.commentCreate.comment) {
     throw new Error(`Failed to create comment for issue ${issueId}.`);
