@@ -290,7 +290,9 @@ interface ProsemirrorIssueMention {
 type ProsemirrorNode =
   | { type: "doc"; content: ProsemirrorNode[] }
   | { type: "paragraph"; content: ProsemirrorNode[] }
+  | { type: "heading"; attrs: { level: number; id: string }; content: ProsemirrorNode[] }
   | { type: "text"; text: string }
+  | { type: "hardBreak" }
   | ProsemirrorIssueMention;
 
 /**
@@ -344,59 +346,119 @@ export async function buildProsemirrorBody(text: string): Promise<object | null>
   }
 
   // Build Prosemirror doc
-  const paragraphNodes: ProsemirrorNode[] = [];
-  const lines = text.split("\n");
+  // Split on double-newline for paragraph boundaries.
+  // Single newlines within a block become hardBreak nodes.
+  const blockTexts = text.split(/\n\n+/);
+  const blockNodes: ProsemirrorNode[] = [];
 
-  for (let li = 0; li < lines.length; li++) {
-    const line = lines[li];
-    const inlineNodes: ProsemirrorNode[] = [];
-    let lastIndex = 0;
+  // Regex to detect markdown heading lines
+  const headingRe = /^(#{1,6})\s+(.*)$/;
 
-    BARE_ISSUE_RE.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = BARE_ISSUE_RE.exec(line)) !== null) {
-      const [fullMatch, identifier] = match;
-      const issueInfo = issueMap.get(identifier);
+  for (const blockText of blockTexts) {
+    if (blockText.trim().length === 0) continue;
 
-      // Skip identifiers inside code blocks/links/URLs or unresolvable ones
-      if (inAnyRange(match.index, skipRanges) || !issueInfo) {
-        continue;
+    // Split block into lines for heading detection
+    const blockLines = blockText.split("\n");
+    const firstLine = blockLines[0];
+    const headingMatch = headingRe.exec(firstLine);
+
+    if (headingMatch) {
+      // Heading block — first line is the heading, rest are separate paragraphs
+      const level = headingMatch[1].length;
+      const headingText = headingMatch[2];
+      const headingContent = buildInlineNodes(headingText, issueMap, skipRanges, urlKey);
+      if (headingContent.length > 0) {
+        const headingId = headingText
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 60) + "-" + Math.random().toString(36).slice(2, 8);
+        blockNodes.push({ type: "heading", attrs: { level, id: headingId }, content: headingContent });
       }
-
-      // Emit preceding text
-      if (match.index > lastIndex) {
-        inlineNodes.push({ type: "text", text: line.slice(lastIndex, match.index) });
-      }
-
-      // Emit issueMention node
-      const slug = issueInfo.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 60);
-      inlineNodes.push({
-        type: "issueMention",
-        attrs: {
-          id: issueInfo.id,
-          label: issueInfo.identifier,
-          href: `https://linear.app/${urlKey}/issue/${issueInfo.identifier}/${slug}`,
-          title: issueInfo.title
+      // Remaining lines in this block become regular paragraphs
+      for (let i = 1; i < blockLines.length; i++) {
+        const lineNodes = buildInlineNodes(blockLines[i], issueMap, skipRanges, urlKey);
+        if (lineNodes.length > 0) {
+          blockNodes.push({ type: "paragraph", content: lineNodes });
         }
-      });
-
-      lastIndex = match.index + fullMatch.length;
+      }
+      continue;
     }
 
-    // Emit trailing text
-    if (lastIndex < line.length) {
-      inlineNodes.push({ type: "text", text: line.slice(lastIndex) });
+    // Regular paragraph block — join lines with hardBreak nodes
+    const inlineNodes: ProsemirrorNode[] = [];
+    for (let i = 0; i < blockLines.length; i++) {
+      if (i > 0 && inlineNodes.length > 0) {
+        inlineNodes.push({ type: "hardBreak" });
+      }
+      const lineNodes = buildInlineNodes(blockLines[i], issueMap, skipRanges, urlKey);
+      inlineNodes.push(...lineNodes);
     }
-
-    // Build paragraph — always include content array (even if empty)
-    paragraphNodes.push({ type: "paragraph", content: inlineNodes });
+    if (inlineNodes.length > 0) {
+      blockNodes.push({ type: "paragraph", content: inlineNodes });
+    }
   }
 
-  return { type: "doc", content: paragraphNodes };
+  if (blockNodes.length === 0) return null;
+
+  return { type: "doc", content: blockNodes };
+}
+
+/**
+ * Build inline Prosemirror nodes from a single line of text,
+ * replacing bare issue identifiers with issueMention nodes.
+ */
+function buildInlineNodes(
+  line: string,
+  issueMap: Map<string, { id: string; identifier: string; title: string }>,
+  skipRanges: Array<[number, number]>,
+  urlKey: string
+): ProsemirrorNode[] {
+  if (line.trim().length === 0) return [];
+  const nodes: ProsemirrorNode[] = [];
+  let lastIndex = 0;
+
+  BARE_ISSUE_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = BARE_ISSUE_RE.exec(line)) !== null) {
+    const [fullMatch, identifier] = match;
+    const issueInfo = issueMap.get(identifier);
+
+    // Skip identifiers inside code blocks/links/URLs or unresolvable ones
+    if (inAnyRange(match.index, skipRanges) || !issueInfo) {
+      continue;
+    }
+
+    // Emit preceding text
+    if (match.index > lastIndex) {
+      nodes.push({ type: "text", text: line.slice(lastIndex, match.index) });
+    }
+
+    // Emit issueMention node
+    const slug = issueInfo.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60);
+    nodes.push({
+      type: "issueMention",
+      attrs: {
+        id: issueInfo.id,
+        label: issueInfo.identifier,
+        href: `https://linear.app/${urlKey}/issue/${issueInfo.identifier}/${slug}`,
+        title: issueInfo.title
+      }
+    });
+
+    lastIndex = match.index + fullMatch.length;
+  }
+
+  // Emit trailing text
+  if (lastIndex < line.length) {
+    nodes.push({ type: "text", text: line.slice(lastIndex) });
+  }
+
+  return nodes;
 }
 
 export async function addComment(issueId: string, body: string): Promise<{ issueId: string; commentId: string; body: string; bodyFile?: string }> {
