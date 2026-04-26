@@ -104,6 +104,7 @@ export async function executeTransition(
         delegate: issue.delegate?.name ?? null,
         assignee: issue.assignee?.name ?? null,
         commentPosted: false,
+        commentId: null,
       };
     }
   }
@@ -153,9 +154,11 @@ export async function executeTransition(
 
   // 7. Post comment (before update if commentFirst)
   let commentPosted = false;
+  let commentId: string | null = null;
   if (body && config.commentMode !== "none") {
     if (config.commentFirst) {
-      await addComment(args.issueId, body);
+      const result = await addComment(args.issueId, body);
+      commentId = result.commentId;
       commentPosted = true;
     }
   }
@@ -170,7 +173,8 @@ export async function executeTransition(
 
   // 10. Post comment (after update if not commentFirst)
   if (body && config.commentMode !== "none" && !config.commentFirst) {
-    await addComment(args.issueId, body);
+    const result = await addComment(args.issueId, body);
+    commentId = result.commentId;
     commentPosted = true;
   }
 
@@ -185,6 +189,7 @@ export async function executeTransition(
     assignee: config.clearAssignee ? null
       : assigneeNameResult ?? issue.assignee?.name ?? null,
     commentPosted,
+    commentId: commentId ?? null,
   };
 
   // 12. Include context for considerWork

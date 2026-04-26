@@ -10,6 +10,7 @@ import {
   handoffWork,
   complete,
   needsHuman,
+  note,
 } from "../semantic";
 
 jest.mock("../client", () => ({
@@ -87,7 +88,7 @@ beforeEach(() => {
     };
     return map[semantic] ?? todoState;
   });
-  mockAddComment.mockResolvedValue({ issueId: "issue-1", body: "test" });
+  mockAddComment.mockResolvedValue({ issueId: "issue-1", commentId: "comment-uuid", body: "test" });
   mockUpdateIssue.mockImplementation(async (id: string, input: any) => ({
     ...baseIssue,
     ...input,
@@ -206,6 +207,7 @@ describe("handoffWork", () => {
       delegate: "Charles (CTO)",
       assignee: null,
       commentPosted: true,
+      commentId: "comment-uuid",
     });
   });
 
@@ -260,6 +262,7 @@ describe("needsHuman", () => {
       delegate: null,
       assignee: "Matt Henry",
       commentPosted: true,
+      commentId: "comment-uuid",
     });
   });
 
@@ -272,5 +275,40 @@ describe("needsHuman", () => {
     await needsHuman("AI-100", "Matt Henry", { comment: "Second ping." });
     expect(mockAddComment).toHaveBeenCalledTimes(2);
     expect(mockUpdateIssue).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("note", () => {
+  it("posts a comment without any state change", async () => {
+    const result = await note("AI-100", { comment: "Follow-up note." });
+    expect(mockAddComment).toHaveBeenCalledWith("issue-1", "Follow-up note.");
+    expect(mockUpdateIssue).not.toHaveBeenCalled();
+    expect(result).toEqual({ issueId: "AI-100", commentPosted: true, commentId: "comment-uuid" });
+  });
+
+  it("works on a Done ticket", async () => {
+    mockGetIssue.mockResolvedValue({
+      ...baseIssue,
+      state: { id: "state-done", name: "Done", type: "completed" },
+    });
+    const result = await note("AI-100", { comment: "Late clarification." });
+    expect(mockAddComment).toHaveBeenCalledWith("issue-1", "Late clarification.");
+    expect(mockUpdateIssue).not.toHaveBeenCalled();
+    expect(result.commentPosted).toBe(true);
+  });
+
+  it("reads comment from file", async () => {
+    jest.spyOn(fs, "readFile").mockResolvedValueOnce("File note content");
+    const result = await note("AI-100", { commentFile: "/path/to/note.md" });
+    expect(mockAddComment).toHaveBeenCalledWith("issue-1", "File note content");
+    expect(result.commentPosted).toBe(true);
+  });
+
+  it("throws when no comment is provided", async () => {
+    await expect(note("AI-100", {})).rejects.toThrow("non-empty comment");
+  });
+
+  it("throws when comment is whitespace-only", async () => {
+    await expect(note("AI-100", { comment: "   " })).rejects.toThrow("non-empty comment");
   });
 });

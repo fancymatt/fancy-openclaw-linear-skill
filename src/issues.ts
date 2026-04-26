@@ -277,7 +277,7 @@ export async function buildTiptapBody(text: string): Promise<object | null> {
   };
 }
 
-export async function addComment(issueId: string, body: string): Promise<{ issueId: string; body: string; bodyFile?: string }> {
+export async function addComment(issueId: string, body: string): Promise<{ issueId: string; commentId: string; body: string; bodyFile?: string }> {
   // Unescape literal \n sequences that shell interpolation often produces
   let finalBody = body.replace(/\\n/g, "\n");
   let tempFilePath: string | undefined;
@@ -330,6 +330,7 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
 
   return {
     issueId,
+    commentId: data.commentCreate.comment.id,
     body: data.commentCreate.comment.body,
     bodyFile: tempFilePath
   };

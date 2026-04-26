@@ -1,10 +1,12 @@
+import fs from "node:fs/promises";
+
 import {
   executeTransition,
   type TransitionArgs,
   type TransitionResult,
 } from "./state-machine";
 import { getComments } from "./boards";
-import { getIssue } from "./issues";
+import { addComment, getIssue } from "./issues";
 
 export interface ObserveResult {
   identifier: string;
@@ -24,6 +26,7 @@ export interface SemanticResult {
   delegate: string | null;
   assignee: string | null;
   commentPosted: boolean;
+  commentId: string | null;
 }
 
 /**
@@ -173,6 +176,29 @@ export async function complete(
     clearDelegate: true,
     clearAssignee: true,
   });
+}
+
+/**
+ * linear note <id>
+ *
+ * Post a comment on an issue without changing any state, delegate, or assignee.
+ * Works on issues in any status including Done and Canceled.
+ * Comment is required (--comment or --comment-file).
+ */
+export async function note(
+  issueId: string,
+  options: { comment?: string; commentFile?: string }
+): Promise<{ issueId: string; commentId: string; commentPosted: boolean }> {
+  let body = options.comment?.trim();
+  if (options.commentFile) {
+    body = (await fs.readFile(options.commentFile, "utf8")).trim();
+  }
+  if (!body) {
+    throw new Error("note requires a non-empty comment. Use --comment or --comment-file.");
+  }
+  const issue = await getIssue(issueId);
+  const commentResult = await addComment(issue.id, body);
+  return { issueId: issue.identifier, commentId: commentResult.commentId, commentPosted: true };
 }
 
 /**

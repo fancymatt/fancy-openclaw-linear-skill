@@ -8,7 +8,7 @@ export async function handoffIssue(
   reviewerName: string,
   comment?: string,
   commentFile?: string
-): Promise<{ issueId: string; reviewer: string; state: string; commentPosted: boolean }> {
+): Promise<{ issueId: string; reviewer: string; state: string; commentPosted: boolean; commentId: string }> {
   const issue = await getIssue(issueId);
   const body = commentFile ? await fs.readFile(commentFile, "utf8") : comment;
   if (!body?.trim()) {
@@ -27,8 +27,10 @@ export async function handoffIssue(
 
   const reviewState = await findStateByName(teamId, "review");
 
+  let commentId: string;
   try {
-    await addComment(issueId, body);
+    const commentResult = await addComment(issueId, body);
+    commentId = commentResult.commentId;
   } catch (error) {
     throw new Error(
       `Handoff failed at step commentCreate for ${issue.identifier}. Current assignee: ${issue.assignee?.name ?? "Unassigned"}, state: ${issue.state?.name ?? "Unknown"}. Recovery: linear comment ${issue.identifier} --body-file <path>`
@@ -47,6 +49,7 @@ export async function handoffIssue(
     issueId: issue.identifier,
     reviewer: reviewer.name,
     state: reviewState.name,
-    commentPosted: true
+    commentPosted: true,
+    commentId,
   };
 }

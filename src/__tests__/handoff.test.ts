@@ -42,7 +42,7 @@ describe("handoffIssue", () => {
     mockGetIssue.mockResolvedValue(baseIssue);
     mockFindUserByName.mockResolvedValue({ id: "user-charles", name: "Charles (CTO)" });
     mockFindStateByName.mockResolvedValue({ id: "state-review", name: "Needs Review" });
-    mockAddComment.mockResolvedValue({ issueId: "issue-1", body: "Done!" });
+    mockAddComment.mockResolvedValue({ issueId: "issue-1", commentId: "comment-uuid", body: "Done!" });
     mockUpdateIssue.mockResolvedValue(baseIssue);
   });
 
@@ -58,7 +58,8 @@ describe("handoffIssue", () => {
       issueId: "AI-100",
       reviewer: "Charles (CTO)",
       state: "Needs Review",
-      commentPosted: true
+      commentPosted: true,
+      commentId: "comment-uuid"
     });
   });
 
