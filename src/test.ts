@@ -1,9 +1,10 @@
 import { checkAuth } from "./auth";
-import { createIssue, updateIssue, addComment, getIssue } from "./issues";
+import { updateIssue, addComment } from "./issues";
 import { resolveTeamId, listTeams } from "./teams";
 import { getWorkflowStates, findStateByName } from "./states";
 import { linearGraphQL } from "./client";
 import { LinearApiError } from "./client";
+import { deleteIssue } from "./delete";
 
 interface TestIssueResponse {
   issue: {
@@ -24,12 +25,50 @@ interface CreatedIssueResponse {
   };
 }
 
+const TEST_PREFIX = "[Linear CLI Test]";
+const ORPHAN_CUTOFF_MS = 4 * 60 * 60 * 1000; // 4 hours — anything older is an orphan
+
+async function sweepOrphans(teamId: string): Promise<void> {
+  try {
+    const data = await linearGraphQL<{
+      issues: { nodes: Array<{ id: string; title: string; createdAt: string }> };
+    }>(
+      `query OrphanTestIssues($teamId: ID!, $prefix: String!) {
+        issues(filter: { title: { startsWith: $prefix }, team: { id: { eq: $teamId } } }, first: 50) {
+          nodes { id title createdAt }
+        }
+      }`,
+      { teamId, prefix: TEST_PREFIX }
+    );
+    const cutoff = Date.now() - ORPHAN_CUTOFF_MS;
+    const orphans = data.issues.nodes.filter(
+      (i) => new Date(i.createdAt).getTime() < cutoff
+    );
+    if (orphans.length === 0) return;
+    console.log(`🧹 Sweeping ${orphans.length} orphan test issue(s)…\n`);
+    for (const orphan of orphans) {
+      try {
+        await deleteIssue(orphan.id);
+        console.log(`   ✅ Deleted: ${orphan.title}`);
+      } catch (err) {
+        console.log(
+          `   ⚠️  Failed to delete ${orphan.title}: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+    console.log();
+  } catch (err) {
+    // Orphan sweep is defensive — never fail the test if it breaks
+    console.log(`⚠️  Orphan sweep skipped: ${err instanceof Error ? err.message : String(err)}\n`);
+  }
+}
+
 export async function linearTest(): Promise<void> {
   console.log("🧪 Linear Test — Round-trip validation\n");
 
   // Generate unique test identifier
   const testId = `TEST-${Date.now().toString(36)}`;
-  const testTitle = `[Linear CLI Test] ${testId}`;
+  const testTitle = `${TEST_PREFIX} ${testId}`;
   console.log(`📝 Test issue: ${testTitle}\n`);
 
   let issueId: string | null = null;
@@ -40,6 +79,15 @@ export async function linearTest(): Promise<void> {
   let teamsAccessible = false;
   let commonStatusUpdatePassed = false;
   let unlikelyStatusBehavior: string | null = null;
+
+  // Sweep orphans from previous failed runs before creating new test data
+  try {
+    const teams = await listTeams();
+    const firstTeamId = await resolveTeamId(teams[0].key ?? "");
+    if (firstTeamId) await sweepOrphans(firstTeamId);
+  } catch {
+    // Non-blocking — proceed with test even if sweep fails
+  }
 
   try {
     // Step 1: Create test issue
@@ -149,29 +197,20 @@ export async function linearTest(): Promise<void> {
     console.log(`   ✅ Auth valid: ${viewer.name}\n`);
     authValid = true;
 
-    // Step 7: Cleanup
-    console.log("9️⃣  Cleaning up...");
-    try {
-      const doneState = await findStateByName(teamId, "done");
-      await updateIssue(issueId, { stateId: doneState.id });
-      console.log(`   ✅ Marked test issue as ${doneState.name}\n`);
-    } catch (err) {
-      console.log(`   ⚠️  Cleanup warning: ${err instanceof Error ? err.message : String(err)}\n`);
-      // Don't fail → test if cleanup fails
-    }
-
   } catch (err) {
     failed = true;
     console.log(`\n❌ Test failed: ${err instanceof Error ? err.message : String(err)}\n`);
-
-    // If we created an issue, try to clean it up
+  } finally {
+    // Always clean up — delete the test issue regardless of pass/fail
     if (issueId) {
+      console.log("9️⃣  Cleaning up...");
       try {
-        console.log("\n🧹 Attempting to clean up test issue...");
-        await updateIssue(issueId, { stateId: "cancel" });
-        console.log(`   ✅ Cleanup successful\n`);
-      } catch (cleanupErr) {
-        console.log(`   ⚠️  Cleanup failed (issue may need manual deletion): ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}\n`);
+        await deleteIssue(issueId);
+        console.log(`   ✅ Deleted test issue ${issueIdentifier ?? issueId}\n`);
+      } catch (err) {
+        console.log(
+          `   ⚠️  Cleanup failed (manual deletion needed): ${err instanceof Error ? err.message : String(err)}\n`
+        );
       }
     }
   }
@@ -203,10 +242,6 @@ export async function linearTest(): Promise<void> {
     
     console.log("  • List teams");
     console.log("  • Verify auth");
-    
-    if (issueIdentifier) {
-      console.log(`\nYou can delete of test issue if desired: ${issueIdentifier}`);
-    }
     process.exit(0);
   } else {
     console.log("❌ Linear Test: FAILED\n");
