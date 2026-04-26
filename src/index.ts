@@ -6,7 +6,7 @@ import { Command } from "commander";
 import { checkAuth, linearDoctor } from "./auth";
 import { getMyBlocked } from "./blocked";
 import { getBoard, getReviewQueue, getStalled } from "./boards";
-import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue } from "./semantic";
+import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue, note } from "./semantic";
 import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue } from "./issues";
 import { attachIssueToMilestone, attachIssueToProject, createMilestone, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
 import { createBlockingRelation, listRelations, removeBlockingRelation } from "./relations";
@@ -518,6 +518,10 @@ async function main(): Promise<void> {
   // --- Semantic commands ---
 
   // --- Semantic commands (kebab-case primary, camelCase aliases for compat) ---
+
+  program.command("note").argument("<id>").requiredOption("--comment <msg>", "Comment body").option("--comment-file <path>", "Read comment from file").description("Post a comment on an issue without changing state, delegate, or assignee").action(async (id: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => note(id, options), program.opts<{ human?: boolean }>().human);
+  });
 
   program.command("observe-issue").alias("observeIssue").argument("<id>").option("--all", "Include all comments instead of last 10").description("Read-only observation of an issue (no ownership change)").action(async (id: string, options: { all?: boolean }) => {
     await runCommand(async () => observeIssue(id, options.all), program.opts<{ human?: boolean }>().human);

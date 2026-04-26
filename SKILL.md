@@ -35,6 +35,8 @@ linear refuse-work <ID> <agent>       # Decline: status=Todo, delegate to anothe
 linear handoff-work <ID> <agent>      # Hand off: status=Todo, delegate to agent (requires --comment)
 linear complete <ID>                  # Finish: status=Done, clear delegate + assignee (optional --comment)
 linear needs-human <ID> <human>       # Escalate: status=Todo, assignee=human, clear delegate (requires --comment)
+linear note <ID> --comment "<msg>"    # Post comment only: no state, delegate, or assignee change
+                                      # Works on any status (including Done/Canceled)
 ```
 
 > **Note:** camelCase aliases (`considerWork`, `beginWork`, etc.) still work for backward compatibility but kebab-case is the standard.
@@ -55,6 +57,7 @@ All write commands accept `--comment "<msg>"` or `--comment-file <path>` for com
 | You need a human decision/input | `needs-human <ID> <human> --comment "..."` |
 | You're the wrong person for this task | `refuse-work <ID> <agent> --comment "..."` |
 | Browsing tickets without ownership | `observe-issue <ID>` |
+| Adding context to a closed ticket | `note <ID> --comment "..."` |
 
 ### Workflow Rules (from AGENTS.md)
 
