@@ -41,7 +41,7 @@ export async function listLabels(team?: string): Promise<Array<{ id: string; nam
 export async function resolveLabelIds(teamId: string, labelNames: string[]): Promise<string[]> {
   const data = await linearGraphQL<LabelsResponse>(
     `
-      query ResolveLabels($teamId: ID!) {
+      query ResolveLabels($teamId: String!) {
         team(id: $teamId) {
           labels(first: 100) {
             nodes { id name color }
@@ -81,22 +81,18 @@ export async function addLabels(issueId: string, labelNames: string[], teamId?: 
     throw new Error(`Unable to resolve team for issue ${issueId}. Pass --team explicitly.`);
   }
 
-  const newLabelIds = await resolveLabelIds(tid, labelNames);
-  const existingLabelIds = issue.labels?.map((l: { id: string }) => l.id) ?? [];
-
-  // Deduplicate
-  const allLabelIds = [...new Set([...existingLabelIds, ...newLabelIds])];
+  const labelIds = await resolveLabelIds(tid, labelNames);
 
   const data = await linearGraphQL<{ issueUpdate: { success: boolean; issue: { id: string; labels: { nodes: Array<{ id: string; name: string }> } } } }>(
     `
-      mutation AddLabels($id: ID!, $labelIds: [ID!]) {
-        issueUpdate(input: { id: $id, labelIds: { set: $labelIds } }) {
+      mutation AddLabels($id: String!, $addedLabelIds: [String!]) {
+        issueUpdate(input: { addedLabelIds: $addedLabelIds }, id: $id) {
           success
           issue { id labels { nodes { id name } } }
         }
       }
     `,
-    { id: issue.id, labelIds: allLabelIds }
+    { id: issue.id, addedLabelIds: labelIds }
   );
 
   return data.issueUpdate;
@@ -110,20 +106,17 @@ export async function removeLabels(issueId: string, labelNames: string[], teamId
   }
 
   const labelIdsToRemove = await resolveLabelIds(tid, labelNames);
-  const existingLabelIds = issue.labels?.map((l: { id: string }) => l.id) ?? [];
-
-  const filtered = existingLabelIds.filter((id: string) => !labelIdsToRemove.includes(id));
 
   const data = await linearGraphQL<{ issueUpdate: { success: boolean; issue: { id: string; labels: { nodes: Array<{ id: string; name: string }> } } } }>(
     `
-      mutation RemoveLabels($id: ID!, $labelIds: [ID!]) {
-        issueUpdate(input: { id: $id, labelIds: { set: $labelIds } }) {
+      mutation RemoveLabels($id: String!, $removedLabelIds: [String!]) {
+        issueUpdate(input: { removedLabelIds: $removedLabelIds }, id: $id) {
           success
           issue { id labels { nodes { id name } } }
         }
       }
     `,
-    { id: issue.id, labelIds: filtered }
+    { id: issue.id, removedLabelIds: labelIdsToRemove }
   );
 
   return data.issueUpdate;

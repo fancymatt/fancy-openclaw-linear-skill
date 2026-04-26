@@ -87,11 +87,11 @@ describe("addLabels", () => {
     expect(result).toBeDefined();
     expect(mockedGraphQL).toHaveBeenLastCalledWith(
       expect.stringContaining("issueUpdate"),
-      expect.objectContaining({ id: "uuid-AI-100", labelIds: ["lbl-1"] })
+      expect.objectContaining({ id: "uuid-AI-100", addedLabelIds: ["lbl-1"] })
     );
   });
 
-  it("adds multiple labels and preserves existing ones", async () => {
+  it("adds multiple labels without fetching existing ones", async () => {
     mockedGetIssue.mockResolvedValue(mockIssue("AI-100", [{ id: "lbl-1", name: "bug" }]));
     mockedGraphQL
       .mockResolvedValueOnce({ team: { labels: { nodes: mockTeamLabels } } })
@@ -114,7 +114,7 @@ describe("addLabels", () => {
     await addLabels("AI-100", ["feature", "infra"]);
     expect(mockedGraphQL).toHaveBeenLastCalledWith(
       expect.stringContaining("issueUpdate"),
-      expect.objectContaining({ id: "uuid-AI-100", labelIds: ["lbl-1", "lbl-2", "lbl-3"] })
+      expect.objectContaining({ id: "uuid-AI-100", addedLabelIds: ["lbl-2", "lbl-3"] })
     );
   });
 
@@ -145,7 +145,7 @@ describe("addLabels", () => {
     await addLabels("AI-100", ["BUG"]);
     expect(mockedGraphQL).toHaveBeenCalledWith(
       expect.stringContaining("issueUpdate"),
-      expect.objectContaining({ labelIds: ["lbl-1"] })
+      expect.objectContaining({ addedLabelIds: ["lbl-1"] })
     );
   });
 });
@@ -171,7 +171,7 @@ describe("removeLabels", () => {
     expect(result).toBeDefined();
     expect(mockedGraphQL).toHaveBeenCalledWith(
       expect.stringContaining("issueUpdate"),
-      expect.objectContaining({ labelIds: [] })
+      expect.objectContaining({ id: "uuid-AI-100", removedLabelIds: ["lbl-1"] })
     );
   });
 
