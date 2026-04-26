@@ -7,8 +7,8 @@ interface DeleteIssueResponse {
 export async function deleteIssue(issueId: string): Promise<{ success: boolean; id: string }> {
   const data = await linearGraphQL<DeleteIssueResponse>(
     `
-      mutation DeleteIssue($id: ID!) {
-        issueDelete(input: { id: $id }) {
+      mutation DeleteIssue($id: String!) {
+        issueDelete(id: $id) {
           success
         }
       }
