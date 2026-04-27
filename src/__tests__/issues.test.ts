@@ -13,6 +13,7 @@ import {
   getMyNewIssues,
   getMyQueue,
   findUserByName,
+  resolveUserWithHints,
   rewriteIssueLinks,
   getWorkspaceUrlKey,
   _resetWorkspaceUrlKeyCache
@@ -496,5 +497,33 @@ describe("getWorkspaceUrlKey", () => {
     await getWorkspaceUrlKey();
     await getWorkspaceUrlKey();
     expect(mockedGraphQL).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("resolveUserWithHints", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Default mock: no users found
+    mockedGraphQL.mockResolvedValue({
+      users: { nodes: [] },
+    });
+  });
+
+  test("unknown name in create context includes display-name hint", async () => {
+    await expect(resolveUserWithHints("Nonexistent Person", "create"))
+      .rejects.toThrow(/Tip: use 'linear create --assignee "Display Name"'/);
+  });
+
+  test("unknown name in handoff-work context suggests needs-human", async () => {
+    await expect(resolveUserWithHints("Matt", "handoff-work"))
+      .rejects.toThrow(/If Matt is a human, consider using 'needs-human'/);
+  });
+
+  test("unknown name without context returns base error", async () => {
+    await expect(resolveUserWithHints("Nobody"))
+      .rejects.toThrow(/Could not uniquely resolve/);
+    // Should NOT include create-specific or handoff-specific hints
+    await expect(resolveUserWithHints("Nobody"))
+      .rejects.not.toThrow(/Tip: use 'linear create/);
   });
 });

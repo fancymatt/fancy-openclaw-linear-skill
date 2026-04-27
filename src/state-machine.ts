@@ -2,9 +2,53 @@ import fs from "node:fs/promises";
 
 import { getSelfUser } from "./auth";
 import { getComments } from "./boards";
-import { addComment, findUserByName, getIssue, updateIssue } from "./issues";
+import { addComment, findUserByName, resolveUserWithHints, getIssue, updateIssue } from "./issues";
 import { findSemanticState } from "./states";
 import { ObserveResult, SemanticResult } from "./semantic";
+
+// --- Comment deduplication ---
+
+/**
+ * Dedup window in seconds. If the last comment from the authenticated user
+ * has the same body and was posted within this window, skip posting.
+ */
+const COMMENT_DEDUP_WINDOW_SECONDS = 60;
+
+/**
+ * Strip HTML/Prosemirror markup for body comparison.
+ */
+function stripMarkup(text: string): string {
+  return text.replace(/<[^>]+>/g, "").replace(/&[a-z]+;/gi, "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Check whether a comment with the given body would be a duplicate of the
+ * most recent comment on the issue. Returns the matching comment if found,
+ * null otherwise. Best-effort: failures return null (proceed with post).
+ */
+export async function findRecentDuplicate(
+  issueId: string,
+  body: string
+): Promise<{ id: string; createdAt: string } | null> {
+  try {
+    const self = await getSelfUser();
+    const comments = await getComments(issueId, false);
+    // comments are sorted ascending; get the last one
+    const last = comments[comments.length - 1];
+    if (
+      last &&
+      last.user?.id === self.id &&
+      stripMarkup(last.body) === stripMarkup(body) &&
+      last.createdAt &&
+      (Date.now() - new Date(last.createdAt).getTime()) / 1000 < COMMENT_DEDUP_WINDOW_SECONDS
+    ) {
+      return { id: last.id, createdAt: last.createdAt };
+    }
+  } catch {
+    // Best-effort — if we can't check, proceed with post
+  }
+  return null;
+}
 
 // --- Shared helpers ---
 
@@ -63,10 +107,8 @@ export interface TransitionArgs {
   commentFile?: string;
   /** Positional user name argument (used when delegateName/assigneeName is a string) */
   userName?: string;
-  /** Maximum bytes per comment chunk; passed to addComment. */
-  maxBytes?: number;
-  /** When true, never auto-chunk long comments. */
-  noSplit?: boolean;
+  /** Command name for contextual error hints */
+  commandName?: string;
 }
 
 export interface TransitionResult extends SemanticResult {
@@ -138,7 +180,7 @@ export async function executeTransition(
       ? config.delegateName(args)
       : config.delegateName;
     if (name) {
-      const user = await findUserByName(name);
+      const user = await resolveUserWithHints(name, args.commandName);
       delegateId = user.id;
       delegateName = user.name;
     }
@@ -154,35 +196,38 @@ export async function executeTransition(
       ? config.assigneeName(args)
       : config.assigneeName;
     if (name) {
-      const user = await findUserByName(name);
+      const user = await resolveUserWithHints(name, args.commandName);
       assigneeId = user.id;
       assigneeNameResult = user.name;
     }
   }
 
   // 7. Post comment (before update if commentFirst)
-  const commentOpts = args.maxBytes !== undefined || args.noSplit !== undefined
-    ? { maxBytes: args.maxBytes, noSplit: args.noSplit }
-    : undefined;
   let commentPosted = false;
   let commentId: string | null = null;
   let commentUrl: string | null = null;
   let commentCreatedAt: string | null = null;
   let commentBodyLength: number | null = null;
   let bodyFile: string | null = null;
-  let chunkCount: number | undefined;
   if (body && config.commentMode !== "none") {
     if (config.commentFirst) {
-      const result = commentOpts
-        ? await addComment(args.issueId, body, commentOpts)
-        : await addComment(args.issueId, body);
-      commentId = result.commentId;
-      commentUrl = result.commentUrl;
-      commentCreatedAt = result.commentCreatedAt;
-      commentBodyLength = result.commentBodyLength;
-      bodyFile = result.bodyFile ?? null;
-      chunkCount = result.chunkCount;
-      commentPosted = true;
+      // Dedup: skip if last comment from self is a recent duplicate
+      const dup = await findRecentDuplicate(args.issueId, body);
+      if (dup) {
+        commentId = dup.id;
+        commentUrl = null;  // dedup: url not available from getComments
+        commentCreatedAt = dup.createdAt;
+        commentBodyLength = Buffer.byteLength(body, "utf8");
+        commentPosted = true;
+      } else {
+        const result = await addComment(args.issueId, body);
+        commentId = result.commentId;
+        commentUrl = result.commentUrl;
+        commentCreatedAt = result.commentCreatedAt;
+        commentBodyLength = result.commentBodyLength;
+        bodyFile = result.bodyFile ?? null;
+        commentPosted = true;
+      }
     }
   }
 
@@ -196,16 +241,23 @@ export async function executeTransition(
 
   // 10. Post comment (after update if not commentFirst)
   if (body && config.commentMode !== "none" && !config.commentFirst) {
-    const result = commentOpts
-      ? await addComment(args.issueId, body, commentOpts)
-      : await addComment(args.issueId, body);
-    commentId = result.commentId;
-    commentUrl = result.commentUrl;
-    commentCreatedAt = result.commentCreatedAt;
-    commentBodyLength = result.commentBodyLength;
-    bodyFile = result.bodyFile ?? null;
-    chunkCount = result.chunkCount;
-    commentPosted = true;
+    // Dedup: skip if last comment from self is a recent duplicate
+    const dup = await findRecentDuplicate(args.issueId, body);
+    if (dup) {
+      commentId = dup.id;
+      commentUrl = null;  // dedup: url not available from getComments
+      commentCreatedAt = dup.createdAt;
+      commentBodyLength = Buffer.byteLength(body, "utf8");
+      commentPosted = true;
+    } else {
+      const result = await addComment(args.issueId, body);
+      commentId = result.commentId;
+      commentUrl = result.commentUrl;
+      commentCreatedAt = result.commentCreatedAt;
+      commentBodyLength = result.commentBodyLength;
+      bodyFile = result.bodyFile ?? null;
+      commentPosted = true;
+    }
   }
 
   // 11. Build result
@@ -225,12 +277,12 @@ export async function executeTransition(
     commentBodyLength: commentBodyLength ?? null,
     bodyFile: bodyFile ?? null,
   };
-  if (chunkCount && chunkCount > 1) result.chunkCount = chunkCount;
 
   // 12. Include context for considerWork
   if (config.includeContext) {
     const comments = await getComments(updatedIssue.id);
     const rawComments = comments.map((c) => ({
+      id: c.id,
       body: c.body,
       createdAt: c.createdAt ?? "",
       user: c.user ? { name: c.user.name } : { name: "Unknown" },

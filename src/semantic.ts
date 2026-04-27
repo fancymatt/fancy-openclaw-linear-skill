@@ -21,7 +21,7 @@ export interface ObserveResult {
   assignee: { name: string } | null;
   delegate: { name: string } | null;
   /** Sorted ascending by createdAt */
-  comments: Array<{ body: string; createdAt: string; user: { name: string } }>;
+  comments: Array<{ id: string; body: string; createdAt: string; user: { name: string } }>;
 }
 
 export interface SemanticResult {
@@ -36,8 +36,6 @@ export interface SemanticResult {
   commentCreatedAt: string | null;
   commentBodyLength: number | null;
   bodyFile: string | null;
-  /** Number of chunks the body was split into; only present when > 1. */
-  chunkCount?: number;
 }
 
 /**
@@ -49,12 +47,14 @@ export interface SemanticResult {
  */
 export async function observeIssue(
   issueId: string,
-  allComments = false
+  allComments = false,
+  sinceTimestamp?: string
 ): Promise<ObserveResult> {
   const issue = await getIssue(issueId);
-  const comments = await getComments(issue.id, allComments);
+  const comments = await getComments(issue.id, allComments, sinceTimestamp);
 
   const rawComments = comments.map((c) => ({
+    id: c.id,
     body: c.body,
     createdAt: c.createdAt ?? "",
     user: c.user ? { name: c.user.name } : { name: "Unknown" },
@@ -110,15 +110,14 @@ export async function considerWork(
 export async function refuseWork(
   issueId: string,
   delegateName: string,
-  options?: { comment?: string; commentFile?: string; maxBytes?: number; noSplit?: boolean }
+  options?: { comment?: string; commentFile?: string }
 ): Promise<SemanticResult> {
   return executeTransition("refuseWork", {
     issueId,
     comment: options?.comment,
     commentFile: options?.commentFile,
     userName: delegateName,
-    maxBytes: options?.maxBytes,
-    noSplit: options?.noSplit,
+    commandName: "refuse-work",
   }, {
     targetState: "todo",
     commentMode: "required",
@@ -157,15 +156,14 @@ export async function beginWork(
 export async function handoffWork(
   issueId: string,
   delegateName: string,
-  options?: { comment?: string; commentFile?: string; maxBytes?: number; noSplit?: boolean }
+  options?: { comment?: string; commentFile?: string }
 ): Promise<SemanticResult> {
   return executeTransition("handoffWork", {
     issueId,
     comment: options?.comment,
     commentFile: options?.commentFile,
     userName: delegateName,
-    maxBytes: options?.maxBytes,
-    noSplit: options?.noSplit,
+    commandName: "handoff-work",
   }, {
     targetState: "todo",
     commentMode: "required",
@@ -186,14 +184,12 @@ export async function handoffWork(
  */
 export async function complete(
   issueId: string,
-  options?: { comment?: string; commentFile?: string; maxBytes?: number; noSplit?: boolean }
+  options?: { comment?: string; commentFile?: string }
 ): Promise<SemanticResult> {
   return executeTransition("complete", {
     issueId,
     comment: options?.comment,
     commentFile: options?.commentFile,
-    maxBytes: options?.maxBytes,
-    noSplit: options?.noSplit,
   }, {
     targetState: "done",
     commentMode: "optional",
@@ -211,8 +207,8 @@ export async function complete(
  */
 export async function note(
   issueId: string,
-  options: { comment?: string; commentFile?: string; maxBytes?: number; noSplit?: boolean }
-): Promise<{ issueId: string; commentId: string; commentPosted: boolean; commentUrl: string | null; commentCreatedAt: string | null; commentBodyLength: number | null; bodyFile: string | null; chunkCount?: number }> {
+  options: { comment?: string; commentFile?: string }
+): Promise<{ issueId: string; commentId: string; commentPosted: boolean; commentUrl: string | null; commentCreatedAt: string | null; commentBodyLength: number | null; bodyFile: string | null }> {
   let body = options.comment?.trim();
   if (options.commentFile) {
     body = (await fs.readFile(options.commentFile, "utf8")).trim();
@@ -221,12 +217,7 @@ export async function note(
     throw new Error("note requires a non-empty comment. Use --comment or --comment-file.");
   }
   const issue = await getIssue(issueId);
-  const commentOpts = options.maxBytes !== undefined || options.noSplit !== undefined
-    ? { maxBytes: options.maxBytes, noSplit: options.noSplit }
-    : undefined;
-  const commentResult = commentOpts
-    ? await addComment(issue.id, body, commentOpts)
-    : await addComment(issue.id, body);
+  const commentResult = await addComment(issue.id, body);
   return {
     issueId: issue.identifier,
     commentId: commentResult.commentId,
@@ -234,8 +225,7 @@ export async function note(
     commentUrl: commentResult.commentUrl,
     commentCreatedAt: commentResult.commentCreatedAt,
     commentBodyLength: commentResult.commentBodyLength,
-    bodyFile: commentResult.bodyFile ?? null,
-    ...(commentResult.chunkCount && commentResult.chunkCount > 1 ? { chunkCount: commentResult.chunkCount } : {}),
+    bodyFile: commentResult.bodyFile ?? null
   };
 }
 
@@ -251,15 +241,14 @@ export async function note(
 export async function needsHuman(
   issueId: string,
   assigneeName: string,
-  options?: { comment?: string; commentFile?: string; maxBytes?: number; noSplit?: boolean }
+  options?: { comment?: string; commentFile?: string }
 ): Promise<SemanticResult> {
   return executeTransition("needsHuman", {
     issueId,
     comment: options?.comment,
     commentFile: options?.commentFile,
     userName: assigneeName,
-    maxBytes: options?.maxBytes,
-    noSplit: options?.noSplit,
+    commandName: "needs-human",
   }, {
     targetState: "todo",
     commentMode: "required",

@@ -6,21 +6,6 @@ import { linearGraphQL } from "./client";
 import { getSelfUser } from "./auth";
 import { ISSUE_FIELDS, STATE_BLOCK, ASSIGNEE_BLOCK, TEAM_BLOCK, DELEGATE_BLOCK } from "./fragments";
 import { CreateIssueInput, Issue, UpdateIssueInput } from "./types";
-import { chunkCommentBody, captionChunks, DEFAULT_MAX_COMMENT_BYTES } from "./chunk";
-
-export interface AddCommentOptions {
-  /** Maximum bytes per comment chunk. Defaults to DEFAULT_MAX_COMMENT_BYTES. */
-  maxBytes?: number;
-  /** When true, never split — let Linear's API error propagate if too long. */
-  noSplit?: boolean;
-}
-
-interface SinglePostResult {
-  commentId: string;
-  commentUrl: string;
-  commentCreatedAt: string;
-  body: string;
-}
 
 interface IssueResponse {
   issue: Issue | null;
@@ -160,6 +145,7 @@ export async function createIssue(input: CreateIssueInput): Promise<Issue> {
         projectId: input.projectId,
         projectMilestoneId: input.projectMilestoneId,
         assigneeId: input.assigneeId,
+        delegateId: input.delegateId,
         priority: input.priority,
         parentId: input.parentId
       }
@@ -478,7 +464,17 @@ function buildInlineNodes(
   return nodes;
 }
 
-async function postSingleComment(issueId: string, finalBody: string): Promise<SinglePostResult> {
+export async function addComment(issueId: string, body: string): Promise<{ issueId: string; commentId: string; commentUrl: string | null; commentCreatedAt: string; commentBodyLength: number; body: string; bodyFile?: string }> {
+
+  let finalBody = body.replace(/\\n/g, "\n");
+  let tempFilePath: string | undefined;
+
+  if (Buffer.byteLength(body, "utf8") > 4 * 1024) {
+    tempFilePath = path.join(os.tmpdir(), `linear-comment-${issueId}-${Date.now()}.md`);
+    await fs.writeFile(tempFilePath, body, "utf8");
+    finalBody = await fs.readFile(tempFilePath, "utf8");
+  }
+
   // Strategy 1: try Prosemirror bodyData with native issueMention nodes
   try {
     const bodyData = await buildProsemirrorBody(finalBody);
@@ -502,10 +498,13 @@ async function postSingleComment(issueId: string, finalBody: string): Promise<Si
 
       if (data.commentCreate.success && data.commentCreate.comment) {
         return {
+          issueId,
           commentId: data.commentCreate.comment.id,
           commentUrl: data.commentCreate.comment.url,
           commentCreatedAt: data.commentCreate.comment.createdAt,
+          commentBodyLength: Buffer.byteLength(finalBody, "utf8"),
           body: data.commentCreate.comment.body,
+          bodyFile: tempFilePath
         };
       }
     }
@@ -514,7 +513,7 @@ async function postSingleComment(issueId: string, finalBody: string): Promise<Si
   }
 
   // Strategy 2: Markdown with rewritten issue links
-  const rewritten = await rewriteWithWorkspaceLinks(finalBody);
+  finalBody = await rewriteWithWorkspaceLinks(finalBody);
 
   const data = await linearGraphQL<CommentCreateResponse>(
     `
@@ -530,7 +529,7 @@ async function postSingleComment(issueId: string, finalBody: string): Promise<Si
         }
       }
     `,
-    { issueId, body: rewritten }
+    { issueId, body: finalBody }
   );
 
   if (!data.commentCreate.success || !data.commentCreate.comment) {
@@ -538,57 +537,13 @@ async function postSingleComment(issueId: string, finalBody: string): Promise<Si
   }
 
   return {
+    issueId,
     commentId: data.commentCreate.comment.id,
     commentUrl: data.commentCreate.comment.url,
     commentCreatedAt: data.commentCreate.comment.createdAt,
+    commentBodyLength: Buffer.byteLength(finalBody, "utf8"),
     body: data.commentCreate.comment.body,
-  };
-}
-
-export async function addComment(
-  issueId: string,
-  body: string,
-  options?: AddCommentOptions
-): Promise<{ issueId: string; commentId: string; commentUrl: string; commentCreatedAt: string; commentBodyLength: number; body: string; bodyFile?: string; chunkCount?: number; chunkCommentIds?: string[] }> {
-  let finalBody = body.replace(/\\n/g, "\n");
-  let tempFilePath: string | undefined;
-
-  if (Buffer.byteLength(body, "utf8") > 4 * 1024) {
-    tempFilePath = path.join(os.tmpdir(), `linear-comment-${issueId}-${Date.now()}.md`);
-    await fs.writeFile(tempFilePath, body, "utf8");
-    finalBody = await fs.readFile(tempFilePath, "utf8");
-  }
-
-  const maxBytes = options?.maxBytes ?? DEFAULT_MAX_COMMENT_BYTES;
-  const noSplit = options?.noSplit === true;
-  const totalBytes = Buffer.byteLength(finalBody, "utf8");
-
-  const rawChunks =
-    noSplit || totalBytes <= maxBytes
-      ? [finalBody]
-      : chunkCommentBody(finalBody, maxBytes);
-  const chunks = captionChunks(rawChunks);
-
-  let first: SinglePostResult | null = null;
-  const ids: string[] = [];
-  for (const chunk of chunks) {
-    const res = await postSingleComment(issueId, chunk);
-    ids.push(res.commentId);
-    if (first === null) first = res;
-  }
-  if (!first) {
-    throw new Error(`Failed to create comment for issue ${issueId}.`);
-  }
-
-  return {
-    issueId,
-    commentId: first.commentId,
-    commentUrl: first.commentUrl,
-    commentCreatedAt: first.commentCreatedAt,
-    commentBodyLength: totalBytes,
-    body: first.body,
-    bodyFile: tempFilePath,
-    ...(chunks.length > 1 ? { chunkCount: chunks.length, chunkCommentIds: ids } : {}),
+    bodyFile: tempFilePath
   };
 }
 
@@ -727,7 +682,101 @@ export async function findUserByName(name: string): Promise<{ id: string; name: 
     return data.users.nodes[0];
   }
 
-  throw new Error(`Could not uniquely resolve Linear user "${name}".`);
+  // Build hint with fuzzy matches or known user suggestions
+  const candidates = data.users.nodes.map((u) => u.name);
+  const parts: string[] = [`Could not uniquely resolve Linear user "${name}".`];
+
+  if (candidates.length === 0) {
+    parts.push(`No users match "${name}". Check spelling.`);
+  } else {
+    parts.push(`Possible matches: ${candidates.join(", ")}`);
+  }
+
+  throw new Error(parts.join(" "));
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+/**
+ * Resolve a user reference that may be either a UUID or a display name.
+ * UUIDs are passed through directly; names are resolved via findUserByName.
+ */
+export async function resolveUserRef(ref: string): Promise<string> {
+  if (UUID_RE.test(ref)) {
+    return ref;
+  }
+  return (await findUserByName(ref)).id;
+}
+
+/**
+ * Levenshtein-style simple fuzzy match: returns names within edit distance 2.
+ */
+function fuzzyNames(query: string, candidates: string[]): string[] {
+  const q = query.toLowerCase();
+  return candidates.filter((c) => {
+    const cl = c.toLowerCase();
+    if (cl === q) return false;
+    // Simple: starts with same 3 chars, or edit distance heuristic via substring
+    if (cl.length >= 3 && q.length >= 3 && cl.startsWith(q.slice(0, 3))) return true;
+    if (cl.includes(q) || q.includes(cl)) return true;
+    // Simple Levenshtein for short names
+    if (Math.abs(cl.length - q.length) <= 2) {
+      let diff = 0;
+      const max = Math.max(cl.length, q.length);
+      for (let i = 0; i < max && diff <= 2; i++) {
+        if (cl[i] !== q[i]) diff++;
+      }
+      if (diff <= 2) return true;
+    }
+    return false;
+  });
+}
+
+// Known agent names for hinting (display names used in Linear)
+const KNOWN_AGENTS = ["Charles (CTO)", "Astrid (CPO)", "Felix (Unity Dev)", "Noah (React Native Dev)", "Igor (Backend Dev)"];
+
+/**
+ * Enhanced user resolution with contextual hints.
+ * Wraps findUserByName to add helpful suggestions when resolution fails.
+ */
+export async function resolveUserWithHints(name: string, contextCommand?: string): Promise<{ id: string; name: string; email?: string | null }> {
+  try {
+    // UUID passthrough — skip API call
+    if (UUID_RE.test(name)) {
+      return { id: name, name };
+    }
+    return await findUserByName(name);
+  } catch (err) {
+    if (!(err instanceof Error)) throw err;
+
+    // Only enhance resolution errors from findUserByName — pass through network/auth errors unchanged
+    if (!err.message.startsWith('Could not uniquely resolve')) {
+      throw err;
+    }
+
+    const parts = [err.message];
+
+    // If no matches at all, try fuzzy suggestions
+    const allNames: string[] = [...KNOWN_AGENTS];
+    const fuzzy = fuzzyNames(name, allNames);
+    if (fuzzy.length > 0) {
+      parts.push(`Did you mean: ${fuzzy.join(", ")}?`);
+    }
+
+    // If the name looks human and command is an agent command, suggest human variant
+    const humanCommands = ["handoff-work", "refuse-work", "needs-human", "consider-work", "begin-work"];
+    const isAgentLike = KNOWN_AGENTS.some((a) => a.toLowerCase().includes(name.toLowerCase()));
+    if (!isAgentLike && contextCommand && humanCommands.includes(contextCommand) && contextCommand !== "needs-human") {
+      parts.push(`If ${name} is a human, consider using 'needs-human' instead.`);
+    }
+
+    // For create context, hint about UUID requirement if name doesn't match
+    if (contextCommand === "create" && !isAgentLike) {
+      parts.push(`Tip: use 'linear create --assignee "Display Name"' with the exact Linear display name, or pass a UUID directly.`);
+    }
+
+    throw new Error(parts.join(" "));
+  }
 }
 
 interface VerifyCommentResponse {
