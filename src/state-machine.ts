@@ -1,10 +1,10 @@
 import fs from "node:fs/promises";
 
 import { getSelfUser } from "./auth";
-import { getComments } from "./boards";
+import { getComments, getIssueHistory } from "./boards";
 import { addComment, findUserByName, resolveUserWithHints, getIssue, updateIssue } from "./issues";
 import { findSemanticState } from "./states";
-import { ObserveResult, SemanticResult } from "./semantic";
+import { ObserveResult, SemanticResult, historyToTimelineEvents } from "./semantic";
 
 // --- Comment deduplication ---
 
@@ -280,7 +280,10 @@ export async function executeTransition(
 
   // 12. Include context for considerWork
   if (config.includeContext) {
-    const comments = await getComments(updatedIssue.id);
+    const [comments, history] = await Promise.all([
+      getComments(updatedIssue.id),
+      getIssueHistory(updatedIssue.id),
+    ]);
     const rawComments = comments.map((c) => ({
       id: c.id,
       body: c.body,
@@ -299,6 +302,7 @@ export async function executeTransition(
       assignee: updatedIssue.assignee ? { name: updatedIssue.assignee.name } : null,
       delegate: updatedIssue.delegate ? { name: updatedIssue.delegate.name } : null,
       comments: rawComments,
+      history: historyToTimelineEvents(history),
     };
   }
 
