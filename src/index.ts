@@ -9,7 +9,7 @@ import { getBoard, getReviewQueue, getStalled } from "./boards";
 import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue, note } from "./semantic";
 import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue, verifyComment } from "./issues";
 import { attachIssueToMilestone, attachIssueToProject, createMilestone, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
-import { createBlockingRelation, listRelations, removeBlockingRelation } from "./relations";
+import { createBlockingRelation, listRelations, removeBlockingRelation, setParent, removeParent } from "./relations";
 import { findStateByName, getWorkflowStates } from "./states";
 import { listTeams, resolveTeamId } from "./teams";
 import { uploadFile } from "./upload";
@@ -382,11 +382,11 @@ async function main(): Promise<void> {
     await runCommand(async () => removeBlockingRelation(id, options.blockedBy), program.opts<{ human?: boolean }>().human);
   });
   program.command("parent").argument("<id>").argument("<parentId>").description("Set parent issue (makes <id> a sub-issue of <parentId>)").action(async (id: string, parentId: string) => {
-    throw new Error("Not yet implemented: setParent");
+    await runCommand(() => setParent(id, parentId), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("unparent").argument("<id>").description("Remove parent relationship from issue").action(async (id: string) => {
-    throw new Error("Not yet implemented: removeParent");
+    await runCommand(() => removeParent(id), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("subtask").argument("<team>").argument("<title>").requiredOption("--parent <id>").action(async (team: string, title: string, options: { parent: string }) => {

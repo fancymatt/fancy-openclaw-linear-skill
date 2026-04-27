@@ -3,7 +3,7 @@ import { stdin as input, stdout as output } from "node:process";
 
 import { linearGraphQL } from "./client";
 import { IssueRelation } from "./types";
-import { getIssue } from "./issues";
+import { getIssue, updateIssue } from "./issues";
 
 interface RelationMutationResponse {
   issueRelationCreate?: {
@@ -93,4 +93,18 @@ export async function removeBlockingRelation(issueId: string, relatedIssueId: st
   }
 
   return { removed: true };
+}
+
+export async function setParent(issueId: string, parentId: string): Promise<{ issueId: string; parentId: string; parentIdentifier: string }> {
+  const [issue, parent] = await Promise.all([getIssue(issueId), getIssue(parentId)]);
+  if (issue.id === parent.id) throw new Error(`Issue ${issueId} cannot be its own parent.`);
+  await updateIssue(issue.id, { parentId: parent.id });
+  return { issueId: issue.identifier, parentId: parent.identifier, parentIdentifier: parent.identifier };
+}
+
+export async function removeParent(issueId: string): Promise<{ issueId: string; removed: boolean }> {
+  const issue = await getIssue(issueId);
+  if (!issue.parent) throw new Error(`Issue ${issue.identifier} has no parent to remove.`);
+  await updateIssue(issue.id, { parentId: null });
+  return { issueId: issue.identifier, removed: true };
 }
