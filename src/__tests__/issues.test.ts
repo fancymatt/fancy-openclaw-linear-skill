@@ -360,19 +360,17 @@ describe("getMyQueue", () => {
     expect(queue.map(i => i.identifier)).toEqual(["AI-200", "AI-300", "AI-100"]);
   });
 
-  it("excludes blocked issues", async () => {
+  it("excludes started states server-side via GraphQL filter", async () => {
     mockedGraphQL.mockResolvedValue({
       issues: {
         nodes: [
-          { ...mockIssue, identifier: "AI-100", state: { name: "Blocked", type: "started" } },
           { ...mockIssue, identifier: "AI-200", state: { name: "Todo", type: "unstarted" } }
         ]
       }
     });
-    const queue = await getMyQueue();
-    // No longer filters blocked client-side — delegate filter returns all active states
-    expect(queue).toHaveLength(2);
-    expect(queue.map(i => i.identifier)).toEqual(["AI-100", "AI-200"]);
+    await getMyQueue();
+    const callArgs = mockedGraphQL.mock.calls[0][0] as string;
+    expect(callArgs).toContain('nin: ["completed", "canceled", "started"]');
   });
 
   it("filters by project name", async () => {

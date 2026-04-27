@@ -618,7 +618,7 @@ export async function getMyQueue(projectName?: string): Promise<Issue[]> {
       query MyQueue($delegateId: ID!) {
         issues(first: 100, filter: {
           delegate: { id: { eq: $delegateId } },
-          state: { type: { nin: ["completed", "canceled"] } }
+          state: { type: { nin: ["completed", "canceled", "started"] } }
         }) {
           nodes {
             id

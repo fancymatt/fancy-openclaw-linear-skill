@@ -99,8 +99,8 @@ Agents should NOT use these. They bypass the semantic intent model and cause del
 ## Navigation & Utility Commands
 
 ```
-linear queue                         # Issues delegated to you (your work queue)
-linear queue --next                  # Highest-priority issue only
+linear queue                         # Issues delegated to you, not yet started (Backlog/To Do only — excludes Thinking/Doing)
+linear queue --next                  # Highest-priority not-yet-started issue only
 linear queue --blocked               # Blocked issues only
 linear my-issues                     # All issues assigned or delegated to you
 linear my-issues --status "To Do"    # Filter by status
