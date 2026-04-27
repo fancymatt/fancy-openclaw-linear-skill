@@ -78,6 +78,7 @@ export async function considerWork(
     delegateToSelf: true,
     clearAssignee: true,
     includeContext: true,
+    skipIfSameState: true,
   });
 }
 
