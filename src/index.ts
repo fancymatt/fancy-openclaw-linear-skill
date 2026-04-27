@@ -7,7 +7,7 @@ import { checkAuth, linearDoctor } from "./auth";
 import { getMyBlocked } from "./blocked";
 import { getBoard, getReviewQueue, getStalled } from "./boards";
 import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue, note } from "./semantic";
-import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue, verifyComment } from "./issues";
+import { addComment, createIssue, findUserByName, resolveUserWithHints, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue, verifyComment } from "./issues";
 import { attachIssueToMilestone, attachIssueToProject, createMilestone, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
 import { createBlockingRelation, listRelations, removeBlockingRelation } from "./relations";
 import { findStateByName, getWorkflowStates } from "./states";
@@ -79,19 +79,6 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
     throw new Error(`Expected a number, got "${value}".`);
   }
   return parsed;
-}
-
-interface CommentChunkOpts {
-  maxCommentBytes?: string;
-  /** Commander sets `split` to false when --no-split is passed. */
-  split?: boolean;
-}
-
-function chunkOpts(options: CommentChunkOpts): { maxBytes?: number; noSplit?: boolean } {
-  return {
-    maxBytes: parseOptionalNumber(options.maxCommentBytes),
-    noSplit: options.split === false,
-  };
 }
 
 function isObserveResult(value: unknown): value is ObserveResult {
@@ -183,10 +170,65 @@ function deprecationWarn(cmd: string, noWarn?: boolean): void {
   }
 }
 
+/**
+ * Build a usage hint string from the matched subcommand.
+ * Returns empty string if no subcommand matched.
+ */
+function buildUsageHint(cmd: Command, subName: string): string {
+  const sub = cmd.commands.find((c) => c.name() === subName || c.aliases().includes(subName));
+  if (!sub) return "";
+  const lines = [`\nUsage: linear ${sub.name()} ${sub.usage()}`, `See 'linear ${sub.name()} --help' for available options.`];
+  return lines.join("\n");
+}
+
+/**
+ * Find the closest matching command name using simple Levenshtein distance.
+ */
+function suggestCommand(cmd: Command, input: string): string | undefined {
+  const names = cmd.commands.map((c) => [c.name(), ...c.aliases()] as string[]).flat();
+  let best: string | undefined;
+  let bestDist = Infinity;
+  for (const name of names) {
+    const d = levenshtein(input.toLowerCase(), name.toLowerCase());
+    if (d < bestDist) {
+      bestDist = d;
+      best = name;
+    }
+  }
+  // Only suggest if reasonably close
+  return bestDist <= 3 ? best : undefined;
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return dp[m][n];
+}
+
 async function main(): Promise<void> {
   const program = new Command();
   program.name("linear").description("Linear CLI for OpenClaw").option("--human", "Use readable output").option("--debug", "Dump raw GraphQL errors to stderr");
   setDebugMode(!!program.opts<{ debug?: boolean }>().debug);
+
+  // Unknown command — suggest similar command names
+  program.on("command:*", (operands) => {
+    const unknown = operands[0];
+    if (unknown) {
+      const suggestion = suggestCommand(program, unknown);
+      const msg = suggestion
+        ? `error: unknown command '${unknown}'\nDid you mean '${suggestion}'?\nSee 'linear --help' for available commands.`
+        : `error: unknown command '${unknown}'\nSee 'linear --help' for available commands.`;
+      process.stderr.write(`${msg}\n`);
+      process.exitCode = 1;
+    }
+  });
 
   const auth = program.command("auth").description("Auth operations");
   auth.command("check").description("Verify auth").action(async () => {
@@ -264,18 +306,22 @@ async function main(): Promise<void> {
     .option("--description <description>")
     .option("--project <projectId>")
     .option("--milestone <milestoneId>")
-    .option("--assignee <assigneeId>")
+    .option("--assignee <name|uuid>")
+    .option("--delegate <name|uuid>")
     .option("--priority <priority>")
     .option("--parent <parentId>")
     .action(async (team: string, title: string, options: Record<string, string | undefined>) => {
       await runCommand(async () => {
         const teamId = await resolveTeamId(team);
+        const assigneeId = options.assignee ? await resolveUserWithHints(options.assignee, "create") : undefined;
+        const delegateId = options.delegate ? await resolveUserWithHints(options.delegate, "create") : undefined;
         const input: CreateIssueInput = {
           title,
           description: options.description,
           projectId: options.project,
           projectMilestoneId: options.milestone,
-          assigneeId: options.assignee,
+          assigneeId,
+          delegateId,
           priority: parseOptionalNumber(options.priority),
           parentId: options.parent
         } as CreateIssueInput;
@@ -607,36 +653,54 @@ async function main(): Promise<void> {
 
   // --- Semantic commands (kebab-case primary, camelCase aliases for compat) ---
 
-  program.command("note").argument("<id>").requiredOption("--comment <msg>", "Comment body").option("--comment-file <path>", "Read comment from file").option("--max-comment-bytes <n>", "Maximum bytes per comment chunk").option("--no-split", "Do not auto-chunk long comments; let API errors propagate").description("Post a comment on an issue without changing state, delegate, or assignee").action(async (id: string, options: { comment?: string; commentFile?: string } & CommentChunkOpts) => {
-    await runCommand(async () => note(id, { comment: options.comment, commentFile: options.commentFile, ...chunkOpts(options) }), program.opts<{ human?: boolean }>().human);
+  program.command("note").argument("<id>").requiredOption("--comment <msg>", "Comment body").option("--comment-file <path>", "Read comment from file").description("Post a comment on an issue without changing state, delegate, or assignee").action(async (id: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => note(id, options), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("observe-issue").alias("observeIssue").argument("<id>").option("--all", "Include all comments instead of last 10").description("Read-only observation of an issue (no ownership change)").action(async (id: string, options: { all?: boolean }) => {
-    await runCommand(async () => observeIssue(id, options.all), program.opts<{ human?: boolean }>().human);
+  program.command("observe-issue").alias("observeIssue").argument("<id>").option("--all", "Include all comments instead of last 10").option("--since <timestamp>", "Only return comments created at or after this ISO timestamp").description("Read-only observation of an issue (no ownership change)").action(async (id: string, options: { all?: boolean; since?: string }) => {
+    await runCommand(async () => observeIssue(id, options.all, options.since), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("consider-work").alias("considerWork").argument("<id>").description("Mark issue as being considered by agent (returns issue context)").action(async (id: string) => {
     await runCommand(async () => considerWork(id), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("refuse-work").alias("refuseWork").argument("<id>").argument("<delegate>", "agent display name in quotes, e.g. \"Astrid (CPO)\"").option("--comment <msg>").option("--comment-file <path>").option("--max-comment-bytes <n>", "Maximum bytes per comment chunk").option("--no-split", "Do not auto-chunk long comments; let API errors propagate").description("Refuse task and delegate to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string } & CommentChunkOpts) => {
-    await runCommand(async () => refuseWork(id, delegate, { comment: options.comment, commentFile: options.commentFile, ...chunkOpts(options) }), program.opts<{ human?: boolean }>().human);
+  program.command("refuse-work").alias("refuseWork").argument("<id>").argument("<delegate>", "agent display name in quotes, e.g. \"Astrid (CPO)\"").option("--comment <msg>").option("--comment-file <path>").description("Refuse task and delegate to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => refuseWork(id, delegate, options), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("begin-work").alias("beginWork").argument("<id>").description("Begin actively working on a task (idempotent)").action(async (id: string) => {
     await runCommand(async () => beginWork(id), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("handoff-work").alias("handoffWork").argument("<id>").argument("<delegate>", "agent display name in quotes, e.g. \"Charles (CTO)\"").option("--comment <msg>").option("--comment-file <path>").option("--max-comment-bytes <n>", "Maximum bytes per comment chunk").option("--no-split", "Do not auto-chunk long comments; let API errors propagate").description("Hand off task to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string } & CommentChunkOpts) => {
-    await runCommand(async () => handoffWork(id, delegate, { comment: options.comment, commentFile: options.commentFile, ...chunkOpts(options) }), program.opts<{ human?: boolean }>().human);
+  program.command("handoff-work").alias("handoffWork").argument("<id>").argument("<delegate>", "agent display name in quotes, e.g. \"Charles (CTO)\"").option("--comment <msg>").option("--comment-file <path>").description("Hand off task to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => handoffWork(id, delegate, options), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("complete").argument("<id>").option("--comment <msg>").option("--comment-file <path>").option("--max-comment-bytes <n>", "Maximum bytes per comment chunk").option("--no-split", "Do not auto-chunk long comments; let API errors propagate").description("Mark task as complete").action(async (id: string, options: { comment?: string; commentFile?: string } & CommentChunkOpts) => {
-    await runCommand(async () => complete(id, { comment: options.comment, commentFile: options.commentFile, ...chunkOpts(options) }), program.opts<{ human?: boolean }>().human);
+  program.command("complete").argument("<id>").option("--comment <msg>").option("--comment-file <path>").description("Mark task as complete").action(async (id: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => complete(id, options), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("needs-human").alias("needsHuman").argument("<id>").argument("<assignee>", "human display name in quotes, e.g. \"Matt Henry\"").option("--comment <msg>").option("--comment-file <path>").option("--max-comment-bytes <n>", "Maximum bytes per comment chunk").option("--no-split", "Do not auto-chunk long comments; let API errors propagate").description("Escalate to human for action").action(async (id: string, assignee: string, options: { comment?: string; commentFile?: string } & CommentChunkOpts) => {
-    await runCommand(async () => needsHuman(id, assignee, { comment: options.comment, commentFile: options.commentFile, ...chunkOpts(options) }), program.opts<{ human?: boolean }>().human);
+  program.command("needs-human").alias("needsHuman").argument("<id>").argument("<assignee>", "human display name in quotes, e.g. \"Matt Henry\"").option("--comment <msg>").option("--comment-file <path>").description("Escalate to human for action").action(async (id: string, assignee: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => needsHuman(id, assignee, options), program.opts<{ human?: boolean }>().human);
+  });
+
+  // Enhance unknown-option errors with usage hints by intercepting stderr output
+  program.configureOutput({
+    writeErr: (str: string) => {
+      if (str.startsWith("error: unknown option")) {
+        // Extract the subcommand from argv
+        const argv = process.argv.slice(2);
+        const subName = argv.find((a) => !a.startsWith("-"));
+        if (subName) {
+          const hint = buildUsageHint(program, subName);
+          process.stderr.write(`${str.trimEnd()}${hint}\n`);
+          process.exitCode = 1;
+          return;
+        }
+      }
+      process.stderr.write(str);
+    },
   });
 
   await program.parseAsync(process.argv);

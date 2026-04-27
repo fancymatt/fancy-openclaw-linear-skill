@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 
 import { getSelfUser } from "../auth";
-import { addComment, findUserByName, getIssue, updateIssue } from "../issues";
+import { addComment, findUserByName, resolveUserWithHints, getIssue, updateIssue } from "../issues";
 import { findSemanticState } from "../states";
 import {
   considerWork,
@@ -26,6 +26,7 @@ jest.mock("../auth", () => ({
 jest.mock("../issues", () => ({
   addComment: jest.fn(),
   findUserByName: jest.fn(),
+  resolveUserWithHints: jest.fn(),
   getIssue: jest.fn(),
   updateIssue: jest.fn(),
 }));
@@ -45,6 +46,7 @@ jest.mock("../states", () => ({
 const mockGetSelfUser = getSelfUser as jest.MockedFunction<typeof getSelfUser>;
 const mockAddComment = addComment as jest.MockedFunction<typeof addComment>;
 const mockFindUserByName = findUserByName as jest.MockedFunction<typeof findUserByName>;
+const mockResolveUserWithHints = resolveUserWithHints as jest.MockedFunction<typeof resolveUserWithHints>;
 const mockGetIssue = getIssue as jest.MockedFunction<typeof getIssue>;
 const mockUpdateIssue = updateIssue as jest.MockedFunction<typeof updateIssue>;
 const mockFindSemanticState = findSemanticState as jest.MockedFunction<typeof findSemanticState>;
@@ -71,6 +73,16 @@ beforeEach(() => {
   mockGetSelfUser.mockResolvedValue({ id: "user-igor", name: "Igor (Back End Dev)", email: "igor@test.com" });
   mockFindUserByName.mockImplementation(async (name: string) => {
     const users: Record<string, { id: string; name: string }> = {
+      "Charles (CTO)": { id: "user-charles", name: "Charles (CTO)" },
+      "Matt Henry": { id: "user-matt", name: "Matt Henry" },
+      "Igor (Back End Dev)": { id: "user-igor", name: "Igor (Back End Dev)" },
+    };
+    const user = users[name];
+    if (!user) throw new Error(`Could not uniquely resolve Linear user "${name}".`);
+    return user;
+  });
+  mockResolveUserWithHints.mockImplementation(async (name: string) => {
+    const users: Record<string, { id: string; name: string; email?: string | null }> = {
       "Charles (CTO)": { id: "user-charles", name: "Charles (CTO)" },
       "Matt Henry": { id: "user-matt", name: "Matt Henry" },
       "Igor (Back End Dev)": { id: "user-igor", name: "Igor (Back End Dev)" },

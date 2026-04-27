@@ -86,6 +86,7 @@ export interface CreateIssueInput {
   projectId?: string;
   projectMilestoneId?: string;
   assigneeId?: string;
+  delegateId?: string;
   priority?: number;
   parentId?: string;
 }

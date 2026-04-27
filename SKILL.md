@@ -115,6 +115,8 @@ linear unblock <ID> --blocked-by <ID>  # Remove block
 linear verify-comment <commentId>    # Strongly-consistent comment existence check
 linear project-issues <project>      # List project issues
 linear create <TEAM> "<title>"       # Create issue
+linear create <TEAM> "<title>" --assignee <name|uuid>  # Assign on create
+linear create <TEAM> "<title>" --delegate <name|uuid>  # Delegate on create
 linear edit <ID> --title/--desc      # Edit title/description
 ```
 
