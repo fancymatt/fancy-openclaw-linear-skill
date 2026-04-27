@@ -124,6 +124,17 @@ describe("considerWork", () => {
     mockGetIssue.mockResolvedValue({ ...baseIssue, team: null });
     await expect(considerWork("AI-100")).rejects.toThrow("no team");
   });
+
+  it("is idempotent — no state update when already In Progress", async () => {
+    mockGetIssue.mockResolvedValue({
+      ...baseIssue,
+      state: { id: "state-thinking", name: "In Progress", type: "started" },
+    });
+    const result = await considerWork("AI-100");
+    expect(mockUpdateIssue).not.toHaveBeenCalled();
+    expect(mockAddComment).not.toHaveBeenCalled();
+    expect(result.state).toBe("In Progress");
+  });
 });
 
 describe("refuseWork", () => {
