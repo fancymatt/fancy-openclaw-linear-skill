@@ -8,14 +8,19 @@ import {
 import { getComments } from "./boards";
 import { addComment, getIssue } from "./issues";
 
+/**
+ * Result of observing an issue. Comments are sorted ascending by createdAt.
+ */
 export interface ObserveResult {
   identifier: string;
   title: string;
   description: string;
+  createdAt: string;
   state: { name: string };
   priority: number;
   assignee: { name: string } | null;
   delegate: { name: string } | null;
+  /** Sorted ascending by createdAt */
   comments: Array<{ body: string; createdAt: string; user: { name: string } }>;
 }
 
@@ -27,6 +32,10 @@ export interface SemanticResult {
   assignee: string | null;
   commentPosted: boolean;
   commentId: string | null;
+  commentUrl: string | null;
+  commentCreatedAt: string | null;
+  commentBodyLength: number | null;
+  bodyFile: string | null;
 }
 
 /**
@@ -43,19 +52,25 @@ export async function observeIssue(
   const issue = await getIssue(issueId);
   const comments = await getComments(issue.id, allComments);
 
+  const rawComments = comments.map((c) => ({
+    body: c.body,
+    createdAt: c.createdAt ?? "",
+    user: c.user ? { name: c.user.name } : { name: "Unknown" },
+  }));
+
+  // Explicit ascending sort by createdAt (guarantee for consumers)
+  rawComments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
   return {
     identifier: issue.identifier,
     title: issue.title,
     description: issue.description ?? "",
+    createdAt: issue.createdAt ?? "",
     state: { name: issue.state?.name ?? "Unknown" },
     priority: issue.priority ?? 0,
     assignee: issue.assignee ? { name: issue.assignee.name } : null,
     delegate: issue.delegate ? { name: issue.delegate.name } : null,
-    comments: comments.map((c) => ({
-      body: c.body,
-      createdAt: c.createdAt ?? "",
-      user: c.user ? { name: c.user.name } : { name: "Unknown" },
-    })),
+    comments: rawComments,
   };
 }
 
@@ -188,7 +203,7 @@ export async function complete(
 export async function note(
   issueId: string,
   options: { comment?: string; commentFile?: string }
-): Promise<{ issueId: string; commentId: string; commentPosted: boolean }> {
+): Promise<{ issueId: string; commentId: string; commentPosted: boolean; commentUrl: string | null; commentCreatedAt: string | null; commentBodyLength: number | null; bodyFile: string | null }> {
   let body = options.comment?.trim();
   if (options.commentFile) {
     body = (await fs.readFile(options.commentFile, "utf8")).trim();
@@ -198,7 +213,15 @@ export async function note(
   }
   const issue = await getIssue(issueId);
   const commentResult = await addComment(issue.id, body);
-  return { issueId: issue.identifier, commentId: commentResult.commentId, commentPosted: true };
+  return {
+    issueId: issue.identifier,
+    commentId: commentResult.commentId,
+    commentPosted: true,
+    commentUrl: commentResult.commentUrl,
+    commentCreatedAt: commentResult.commentCreatedAt,
+    commentBodyLength: commentResult.commentBodyLength,
+    bodyFile: commentResult.bodyFile ?? null
+  };
 }
 
 /**

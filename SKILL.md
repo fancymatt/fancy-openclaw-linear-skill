@@ -85,6 +85,10 @@ All write commands accept `--comment "<msg>"` or `--comment-file <path>` for com
    - The fix was implemented and confirmed.
    Silence is not resolution. A flagged issue with no explicit response blocks `complete`.
 
+### Comment Verification
+
+**Never read-after-write to verify a comment.** The mutation result is the strongly-consistent source of truth. Trust the `commentId` and `commentUrl` printed on success. If you genuinely need to confirm propagation (rare), use `linear verify-comment <commentId>` — it uses the strongly-consistent node query, not the eventually-consistent connection feed. The `linear comments` / `observe-issue` connection feed can lag by seconds to minutes.
+
 ### Deprecated Commands (Human Use Only)
 
 The following commands still work but print deprecation warnings for agents:
@@ -108,6 +112,7 @@ linear children <ID>                 # View sub-issues
 linear relations <ID>                # View related issues
 linear block <ID> --blocked-by <ID>  # Mark as blocking
 linear unblock <ID> --blocked-by <ID>  # Remove block
+linear verify-comment <commentId>    # Strongly-consistent comment existence check
 linear project-issues <project>      # List project issues
 linear create <TEAM> "<title>"       # Create issue
 linear edit <ID> --title/--desc      # Edit title/description

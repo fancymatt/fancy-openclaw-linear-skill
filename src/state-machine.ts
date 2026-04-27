@@ -105,6 +105,10 @@ export async function executeTransition(
         assignee: issue.assignee?.name ?? null,
         commentPosted: false,
         commentId: null,
+        commentUrl: null,
+        commentCreatedAt: null,
+        commentBodyLength: null,
+        bodyFile: null,
       };
     }
   }
@@ -155,10 +159,18 @@ export async function executeTransition(
   // 7. Post comment (before update if commentFirst)
   let commentPosted = false;
   let commentId: string | null = null;
+  let commentUrl: string | null = null;
+  let commentCreatedAt: string | null = null;
+  let commentBodyLength: number | null = null;
+  let bodyFile: string | null = null;
   if (body && config.commentMode !== "none") {
     if (config.commentFirst) {
       const result = await addComment(args.issueId, body);
       commentId = result.commentId;
+      commentUrl = result.commentUrl;
+      commentCreatedAt = result.commentCreatedAt;
+      commentBodyLength = result.commentBodyLength;
+      bodyFile = result.bodyFile ?? null;
       commentPosted = true;
     }
   }
@@ -175,6 +187,10 @@ export async function executeTransition(
   if (body && config.commentMode !== "none" && !config.commentFirst) {
     const result = await addComment(args.issueId, body);
     commentId = result.commentId;
+    commentUrl = result.commentUrl;
+    commentCreatedAt = result.commentCreatedAt;
+    commentBodyLength = result.commentBodyLength;
+    bodyFile = result.bodyFile ?? null;
     commentPosted = true;
   }
 
@@ -190,24 +206,32 @@ export async function executeTransition(
       : assigneeNameResult ?? issue.assignee?.name ?? null,
     commentPosted,
     commentId: commentId ?? null,
+    commentUrl: commentUrl ?? null,
+    commentCreatedAt: commentCreatedAt ?? null,
+    commentBodyLength: commentBodyLength ?? null,
+    bodyFile: bodyFile ?? null,
   };
 
   // 12. Include context for considerWork
   if (config.includeContext) {
     const comments = await getComments(updatedIssue.id);
+    const rawComments = comments.map((c) => ({
+      body: c.body,
+      createdAt: c.createdAt ?? "",
+      user: c.user ? { name: c.user.name } : { name: "Unknown" },
+    }));
+    rawComments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
     result.context = {
       identifier: updatedIssue.identifier,
       title: updatedIssue.title,
       description: updatedIssue.description ?? "",
+      createdAt: updatedIssue.createdAt ?? "",
       state: { name: updatedIssue.state?.name ?? "Unknown" },
       priority: updatedIssue.priority ?? 0,
       assignee: updatedIssue.assignee ? { name: updatedIssue.assignee.name } : null,
       delegate: updatedIssue.delegate ? { name: updatedIssue.delegate.name } : null,
-      comments: comments.map((c) => ({
-        body: c.body,
-        createdAt: c.createdAt ?? "",
-        user: c.user ? { name: c.user.name } : { name: "Unknown" },
-      })),
+      comments: rawComments,
     };
   }
 

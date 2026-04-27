@@ -226,11 +226,15 @@ describe("addComment", () => {
 
   it("posts comment via body (Markdown) path", async () => {
     mockedGraphQL.mockResolvedValue({
-      commentCreate: { success: true, comment: { id: "c-1", body: "Hello" } }
+      commentCreate: { success: true, comment: { id: "c-1", body: "Hello", createdAt: "2026-04-26T12:00:00Z", url: "https://linear.app/test/issue/AI-100#comment-c-1" } }
     });
     const result = await addComment("issue-1", "Hello");
     expect(result.body).toBe("Hello");
     expect(result.issueId).toBe("issue-1");
+    expect(result.commentId).toBe("c-1");
+    expect(result.commentUrl).toBe("https://linear.app/test/issue/AI-100#comment-c-1");
+    expect(result.commentCreatedAt).toBe("2026-04-26T12:00:00Z");
+    expect(result.commentBodyLength).toBe(5);
     // Should send body, never bodyData
     expect(mockedGraphQL).toHaveBeenCalledWith(
       expect.stringContaining("$body: String!"),
@@ -247,7 +251,17 @@ describe("addComment", () => {
     mockedGraphQL
       .mockResolvedValueOnce({ issues: { nodes: [] } })        // getIssue(AI-424) fails — no match
       .mockResolvedValueOnce({ organization: { urlKey: "myorg" } }) // getWorkspaceUrlKey
-      .mockResolvedValueOnce({ commentCreate: { success: true, comment: { id: "c-2", body: "See [AI-424](https://linear.app/myorg/issue/AI-424) for context." } } });
+      .mockResolvedValueOnce({
+        commentCreate: {
+          success: true,
+          comment: {
+            id: "c-2",
+            body: "See [AI-424](https://linear.app/myorg/issue/AI-424) for context.",
+            createdAt: "2026-04-26T12:01:00Z",
+            url: "https://linear.app/myorg/issue/AI-424#comment-c-2",
+          },
+        },
+      });
     const result = await addComment("issue-1", "See AI-424 for context.");
     expect(mockedGraphQL).toHaveBeenCalledWith(
       expect.stringContaining("$body: String!"),
@@ -258,10 +272,12 @@ describe("addComment", () => {
 
   it("unescapes literal \\n sequences", async () => {
     mockedGraphQL.mockResolvedValue({
-      commentCreate: { success: true, comment: { id: "c-3", body: "line1\nline2" } }
+      commentCreate: { success: true, comment: { id: "c-3", body: "line1\nline2", createdAt: "2026-04-26T12:02:00Z", url: "https://linear.app/test/issue/AI-100#comment-c-3" } }
     });
     const result = await addComment("issue-1", "line1\\nline2");
     expect(result.body).toBe("line1\nline2");
+    expect(result.commentUrl).toBe("https://linear.app/test/issue/AI-100#comment-c-3");
+    expect(result.commentBodyLength).toBe(11);
   });
 
   it("crashes on undefined body (known bug: guard runs after .replace)", async () => {

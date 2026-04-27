@@ -7,9 +7,9 @@ import { checkAuth, linearDoctor } from "./auth";
 import { getMyBlocked } from "./blocked";
 import { getBoard, getReviewQueue, getStalled } from "./boards";
 import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue, note } from "./semantic";
-import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue } from "./issues";
+import { addComment, createIssue, findUserByName, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue, verifyComment } from "./issues";
 import { attachIssueToMilestone, attachIssueToProject, createMilestone, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
-import { createBlockingRelation, listRelations, removeBlockingRelation, setParent, removeParent } from "./relations";
+import { createBlockingRelation, listRelations, removeBlockingRelation } from "./relations";
 import { findStateByName, getWorkflowStates } from "./states";
 import { listTeams, resolveTeamId } from "./teams";
 import { uploadFile } from "./upload";
@@ -18,6 +18,8 @@ import { listLabels, addLabels, removeLabels } from "./labels";
 import { searchIssues } from "./search";
 import { linearTest } from "./test";
 import { linearGraphQL, LinearApiError } from "./client";
+import { relativeTime, wrapText } from "./utils";
+import { ObserveResult } from "./semantic";
 import { setDebugMode, isDebugMode } from "./debug";
 import { CreateIssueInput, UpdateIssueInput } from "./types";
 
@@ -79,7 +81,59 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
   return parsed;
 }
 
+function isObserveResult(value: unknown): value is ObserveResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "identifier" in value &&
+    "comments" in value &&
+    "createdAt" in value
+  );
+}
+
+function renderTimeline(data: ObserveResult): string {
+  const lines: string[] = [];
+  const sep = "─".repeat(56);
+
+  // Header
+  lines.push(`${data.identifier} | ${data.title}`);
+  const metaParts = [`State: ${data.state.name}`, `Priority: ${data.priority}`];
+  if (data.createdAt) {
+    const rel = data.createdAt ? relativeTime(data.createdAt) : "";
+    metaParts.push(`Created: ${data.createdAt}${rel ? ` (${rel})` : ""}`);
+  }
+  lines.push(metaParts.join(" | "));
+  if (data.assignee) lines.push(`Assignee: ${data.assignee.name}`);
+  if (data.delegate) lines.push(`Delegate: ${data.delegate.name}`);
+
+  lines.push("");
+  lines.push(`── Timeline ${sep}`);
+  lines.push("");
+
+  // Issue creation event
+  if (data.createdAt) {
+    const rel = relativeTime(data.createdAt);
+    lines.push(`📌 ${data.createdAt} (${rel}) — Issue created`);
+  }
+
+  // Comments
+  for (const comment of data.comments) {
+    const rel = comment.createdAt ? relativeTime(comment.createdAt) : "";
+    const user = comment.user?.name ?? "Unknown";
+    lines.push("");
+    lines.push(`💬 ${comment.createdAt}${rel ? ` (${rel})` : ""} — ${user}`);
+    lines.push(`   ${wrapText(comment.body, 70).split("\n").join("\n   ")}`);
+  }
+
+  return lines.join("\n") + "\n";
+}
+
 function printResult(result: unknown, human = false): void {
+  if (human && isObserveResult(result)) {
+    process.stdout.write(renderTimeline(result));
+    return;
+  }
+
   if (!human) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
@@ -328,11 +382,11 @@ async function main(): Promise<void> {
     await runCommand(async () => removeBlockingRelation(id, options.blockedBy), program.opts<{ human?: boolean }>().human);
   });
   program.command("parent").argument("<id>").argument("<parentId>").description("Set parent issue (makes <id> a sub-issue of <parentId>)").action(async (id: string, parentId: string) => {
-    await runCommand(async () => setParent(id, parentId), program.opts<{ human?: boolean }>().human);
+    throw new Error("Not yet implemented: setParent");
   });
 
   program.command("unparent").argument("<id>").description("Remove parent relationship from issue").action(async (id: string) => {
-    await runCommand(async () => removeParent(id), program.opts<{ human?: boolean }>().human);
+    throw new Error("Not yet implemented: removeParent");
   });
 
   program.command("subtask").argument("<team>").argument("<title>").requiredOption("--parent <id>").action(async (team: string, title: string, options: { parent: string }) => {
@@ -497,6 +551,14 @@ async function main(): Promise<void> {
 
   program.command("delete-comment").argument("<commentId>").description("Delete a comment").action(async (commentId: string) => {
     await runCommand(async () => deleteComment(commentId), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("verify-comment").argument("<commentId>").description("Verify a comment exists using strongly-consistent node lookup").action(async (commentId: string) => {
+    const result = await verifyComment(commentId);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (!result.exists) {
+      process.exitCode = 1;
+    }
   });
 
   // --- Label commands ---

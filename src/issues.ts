@@ -45,6 +45,8 @@ interface CommentCreateResponse {
     comment: {
       id: string;
       body: string;
+      createdAt: string;
+      url: string;
     } | null;
   };
 }
@@ -461,8 +463,7 @@ function buildInlineNodes(
   return nodes;
 }
 
-export async function addComment(issueId: string, body: string): Promise<{ issueId: string; commentId: string; body: string; bodyFile?: string }> {
-  // Unescape literal \n sequences that shell interpolation often produces
+export async function addComment(issueId: string, body: string): Promise<{ issueId: string; commentId: string; commentUrl: string; commentCreatedAt: string; commentBodyLength: number; body: string; bodyFile?: string }> {
   let finalBody = body.replace(/\\n/g, "\n");
   let tempFilePath: string | undefined;
 
@@ -484,6 +485,8 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
               comment {
                 id
                 body
+                createdAt
+                url
               }
             }
           }
@@ -495,6 +498,9 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
         return {
           issueId,
           commentId: data.commentCreate.comment.id,
+          commentUrl: data.commentCreate.comment.url,
+          commentCreatedAt: data.commentCreate.comment.createdAt,
+          commentBodyLength: Buffer.byteLength(finalBody, "utf8"),
           body: data.commentCreate.comment.body,
           bodyFile: tempFilePath
         };
@@ -515,6 +521,8 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
           comment {
             id
             body
+            createdAt
+            url
           }
         }
       }
@@ -529,6 +537,9 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
   return {
     issueId,
     commentId: data.commentCreate.comment.id,
+    commentUrl: data.commentCreate.comment.url,
+    commentCreatedAt: data.commentCreate.comment.createdAt,
+    commentBodyLength: Buffer.byteLength(finalBody, "utf8"),
     body: data.commentCreate.comment.body,
     bodyFile: tempFilePath
   };
@@ -670,4 +681,51 @@ export async function findUserByName(name: string): Promise<{ id: string; name: 
   }
 
   throw new Error(`Could not uniquely resolve Linear user "${name}".`);
+}
+
+interface VerifyCommentResponse {
+  comment: {
+    id: string;
+    body: string;
+    createdAt: string;
+    url: string;
+    issue: { identifier: string } | null;
+  } | null;
+}
+
+export async function verifyComment(commentId: string): Promise<{
+  commentId: string;
+  exists: boolean;
+  body?: string;
+  createdAt?: string;
+  issueIdentifier?: string;
+  url?: string;
+}> {
+  const data = await linearGraphQL<VerifyCommentResponse>(
+    `
+      query VerifyComment($id: String!) {
+        comment(id: $id) {
+          id
+          body
+          createdAt
+          url
+          issue { identifier }
+        }
+      }
+    `,
+    { id: commentId }
+  );
+
+  if (!data.comment) {
+    return { commentId, exists: false };
+  }
+
+  return {
+    commentId: data.comment.id,
+    exists: true,
+    body: data.comment.body,
+    createdAt: data.comment.createdAt,
+    issueIdentifier: data.comment.issue?.identifier ?? undefined,
+    url: data.comment.url
+  };
 }
