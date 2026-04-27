@@ -47,7 +47,7 @@ interface MilestoneCreateResponse {
   };
 }
 
-async function findProjectByName(name: string): Promise<Project> {
+export async function findProjectByName(name: string): Promise<Project> {
   const data = await linearGraphQL<ProjectByNameResponse>(
     `
       query ProjectByName($name: String!) {
