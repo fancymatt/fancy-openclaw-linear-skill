@@ -42,7 +42,7 @@ describe("handoffIssue", () => {
     mockGetIssue.mockResolvedValue(baseIssue);
     mockFindUserByName.mockResolvedValue({ id: "user-charles", name: "Charles (CTO)" });
     mockFindStateByName.mockResolvedValue({ id: "state-review", name: "Needs Review" });
-    mockAddComment.mockResolvedValue({ issueId: "issue-1", commentId: "comment-uuid", body: "Done!" });
+    mockAddComment.mockResolvedValue({ issueId: "issue-1", commentId: "comment-uuid", commentUrl: "https://linear.app/test/comment/comment-uuid", commentCreatedAt: "2026-04-26T12:00:00Z", commentBodyLength: 5, body: "Done!" });
     mockUpdateIssue.mockResolvedValue(baseIssue);
   });
 

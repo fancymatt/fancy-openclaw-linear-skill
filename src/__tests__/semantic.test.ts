@@ -88,7 +88,7 @@ beforeEach(() => {
     };
     return map[semantic] ?? todoState;
   });
-  mockAddComment.mockResolvedValue({ issueId: "issue-1", commentId: "comment-uuid", body: "test" });
+  mockAddComment.mockResolvedValue({ issueId: "issue-1", commentId: "comment-uuid", commentUrl: "https://linear.app/test/comment/comment-uuid", commentCreatedAt: "2026-04-26T12:00:00Z", commentBodyLength: 4, body: "test" });
   mockUpdateIssue.mockImplementation(async (id: string, input: any) => ({
     ...baseIssue,
     ...input,
@@ -208,6 +208,10 @@ describe("handoffWork", () => {
       assignee: null,
       commentPosted: true,
       commentId: "comment-uuid",
+      commentUrl: "https://linear.app/test/comment/comment-uuid",
+      commentCreatedAt: "2026-04-26T12:00:00Z",
+      commentBodyLength: 4,
+      bodyFile: null,
     });
   });
 
@@ -263,6 +267,10 @@ describe("needsHuman", () => {
       assignee: "Matt Henry",
       commentPosted: true,
       commentId: "comment-uuid",
+      commentUrl: "https://linear.app/test/comment/comment-uuid",
+      commentCreatedAt: "2026-04-26T12:00:00Z",
+      commentBodyLength: 4,
+      bodyFile: null,
     });
   });
 
@@ -283,7 +291,7 @@ describe("note", () => {
     const result = await note("AI-100", { comment: "Follow-up note." });
     expect(mockAddComment).toHaveBeenCalledWith("issue-1", "Follow-up note.");
     expect(mockUpdateIssue).not.toHaveBeenCalled();
-    expect(result).toEqual({ issueId: "AI-100", commentPosted: true, commentId: "comment-uuid" });
+    expect(result).toEqual({ issueId: "AI-100", commentPosted: true, commentId: "comment-uuid", commentUrl: "https://linear.app/test/comment/comment-uuid", commentCreatedAt: "2026-04-26T12:00:00Z", commentBodyLength: 4, bodyFile: null });
   });
 
   it("works on a Done ticket", async () => {

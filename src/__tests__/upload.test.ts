@@ -67,7 +67,7 @@ describe("uploadFile", () => {
     mockedGraphQL.mockResolvedValue({
       fileUpload: { success: true, uploadUrl: "https://url", assetUrl: "https://asset/file.md", headers: [] }
     });
-    mockAddComment.mockResolvedValue({ issueId: "AI-100", commentId: "comment-uuid", body: "https://asset/file.md" });
+    mockAddComment.mockResolvedValue({ issueId: "AI-100", commentId: "comment-uuid", commentUrl: "https://linear.app/test/comment/comment-uuid", commentCreatedAt: "2026-04-26T12:00:00Z", commentBodyLength: 20, body: "https://asset/file.md" });
 
     const result = await uploadFile("/path/to/file.md", "AI-100");
     expect(result.issueCommented).toBe(true);

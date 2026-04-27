@@ -132,6 +132,7 @@ You should see your Linear user name and email printed. If not, see `references/
 | `linear priority <id> <level>` | Set issue priority |
 | `linear comments <id> [--all]` | Read comments on an issue |
 | `linear delete-comment <commentId>` | Delete a comment |
+| `linear verify-comment <commentId>` | Verify a comment exists using strongly-consistent node lookup |
 | `linear upload <file> --comment <issueId>` | Upload a file attachment, optionally linking to a comment |
 
 ### Labels
@@ -141,6 +142,10 @@ You should see your Linear user name and email printed. If not, see `references/
 | `linear labels [--team <team>]` | List available labels for a team |
 | `linear label <id> <labelName...> [--team <team>]` | Add label(s) to an issue. Case-insensitive. Appends to existing labels. |
 | `linear unlabel <id> <labelName...> [--team <team>]` | Remove label(s) from an issue. Case-insensitive. |
+
+### Comment Verification
+
+**Never read-after-write to verify a comment.** The mutation result is the strongly-consistent source of truth. Trust the `commentId` and `commentUrl` printed on success. If you genuinely need to confirm propagation (rare), use `linear verify-comment <commentId>` — it uses the strongly-consistent node query, not the eventually-consistent connection feed. The `linear comments` / `observe-issue` connection feed can lag by seconds to minutes.
 
 ### Deprecated Commands (Hidden from --help)
 
