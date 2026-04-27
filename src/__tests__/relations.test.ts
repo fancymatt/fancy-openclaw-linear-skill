@@ -1,6 +1,6 @@
 import { linearGraphQL } from "../client";
-import { getIssue } from "../issues";
-import { listRelations, createBlockingRelation, removeBlockingRelation } from "../relations";
+import { getIssue, updateIssue } from "../issues";
+import { listRelations, createBlockingRelation, removeBlockingRelation, setParent, removeParent } from "../relations";
 
 jest.mock("../client", () => ({
   ...jest.requireActual("../client"),
@@ -8,11 +8,13 @@ jest.mock("../client", () => ({
 }));
 
 jest.mock("../issues", () => ({
-  getIssue: jest.fn()
+  getIssue: jest.fn(),
+  updateIssue: jest.fn()
 }));
 
 const mockedGraphQL = linearGraphQL as jest.MockedFunction<typeof linearGraphQL>;
 const mockGetIssue = getIssue as jest.MockedFunction<typeof getIssue>;
+const mockUpdateIssue = updateIssue as jest.MockedFunction<typeof updateIssue>;
 
 describe("listRelations", () => {
   beforeEach(() => mockGetIssue.mockReset());
@@ -109,5 +111,58 @@ describe("removeBlockingRelation", () => {
     } as any);
     mockedGraphQL.mockResolvedValue({ issueRelationDelete: { success: false } });
     await expect(removeBlockingRelation("AI-100", "AI-200")).rejects.toThrow("Failed to delete relation");
+  });
+});
+
+describe("setParent", () => {
+  beforeEach(() => {
+    mockGetIssue.mockReset();
+    mockUpdateIssue.mockReset();
+  });
+
+  it("sets parent on an issue", async () => {
+    mockGetIssue.mockImplementation(async (id: string) => ({
+      id: id === "AI-100" ? "uuid-100" : "uuid-200",
+      identifier: id,
+      title: id
+    } as any));
+    mockUpdateIssue.mockResolvedValue({ id: "uuid-100" } as any);
+
+    const result = await setParent("AI-100", "AI-200");
+    expect(result.issueId).toBe("AI-100");
+    expect(result.parentId).toBe("AI-200");
+    expect(mockUpdateIssue).toHaveBeenCalledWith("uuid-100", { parentId: "uuid-200" });
+  });
+
+  it("throws when setting self as parent", async () => {
+    mockGetIssue.mockResolvedValue({ id: "uuid-100", identifier: "AI-100", title: "A" } as any);
+    await expect(setParent("AI-100", "AI-100")).rejects.toThrow("cannot be its own parent");
+  });
+});
+
+describe("removeParent", () => {
+  beforeEach(() => {
+    mockGetIssue.mockReset();
+    mockUpdateIssue.mockReset();
+  });
+
+  it("removes parent from an issue", async () => {
+    mockGetIssue.mockResolvedValue({
+      id: "uuid-100",
+      identifier: "AI-100",
+      title: "A",
+      parent: { id: "uuid-200", identifier: "AI-200", title: "B" }
+    } as any);
+    mockUpdateIssue.mockResolvedValue({ id: "uuid-100" } as any);
+
+    const result = await removeParent("AI-100");
+    expect(result.issueId).toBe("AI-100");
+    expect(result.removed).toBe(true);
+    expect(mockUpdateIssue).toHaveBeenCalledWith("uuid-100", { parentId: null });
+  });
+
+  it("throws when issue has no parent", async () => {
+    mockGetIssue.mockResolvedValue({ id: "uuid-100", identifier: "AI-100", title: "A", parent: null } as any);
+    await expect(removeParent("AI-100")).rejects.toThrow("has no parent");
   });
 });

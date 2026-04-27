@@ -99,4 +99,5 @@ export interface UpdateIssueInput {
   priority?: number;
   projectId?: string;
   projectMilestoneId?: string;
+  parentId?: string | null;
 }
