@@ -8,7 +8,7 @@ import { ISSUE_FIELDS, STATE_BLOCK, ASSIGNEE_BLOCK, TEAM_BLOCK, DELEGATE_BLOCK }
 import { CreateIssueInput, Issue, UpdateIssueInput } from "./types";
 
 interface IssueResponse {
-  issue: Issue | null;
+  issue: RawIssue | null;
 }
 
 interface IssuesResponse {
@@ -74,7 +74,7 @@ function normalizeIssue(issue: RawIssue): Issue {
 
 interface IssuesByFilterResponse {
   issues: {
-    nodes: Issue[];
+    nodes: RawIssue[];
   };
 }
 
@@ -100,7 +100,7 @@ export async function getIssue(id: string): Promise<Issue> {
     if (!data.issues.nodes.length) {
       throw new Error(`Issue not found: ${id}`);
     }
-    return normalizeIssue(data.issues.nodes[0] as unknown as RawIssue);
+    return normalizeIssue(data.issues.nodes[0]);
   }
 
   const data = await linearGraphQL<IssueResponse>(
@@ -116,7 +116,7 @@ export async function getIssue(id: string): Promise<Issue> {
   if (!data.issue) {
     throw new Error(`Issue not found: ${id}`);
   }
-  return normalizeIssue(data.issue as unknown as RawIssue);
+  return normalizeIssue(data.issue);
 }
 
 export async function createIssue(input: CreateIssueInput): Promise<Issue> {
