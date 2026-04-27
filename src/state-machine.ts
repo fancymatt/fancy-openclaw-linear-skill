@@ -63,6 +63,10 @@ export interface TransitionArgs {
   commentFile?: string;
   /** Positional user name argument (used when delegateName/assigneeName is a string) */
   userName?: string;
+  /** Maximum bytes per comment chunk; passed to addComment. */
+  maxBytes?: number;
+  /** When true, never auto-chunk long comments. */
+  noSplit?: boolean;
 }
 
 export interface TransitionResult extends SemanticResult {
@@ -157,20 +161,27 @@ export async function executeTransition(
   }
 
   // 7. Post comment (before update if commentFirst)
+  const commentOpts = args.maxBytes !== undefined || args.noSplit !== undefined
+    ? { maxBytes: args.maxBytes, noSplit: args.noSplit }
+    : undefined;
   let commentPosted = false;
   let commentId: string | null = null;
   let commentUrl: string | null = null;
   let commentCreatedAt: string | null = null;
   let commentBodyLength: number | null = null;
   let bodyFile: string | null = null;
+  let chunkCount: number | undefined;
   if (body && config.commentMode !== "none") {
     if (config.commentFirst) {
-      const result = await addComment(args.issueId, body);
+      const result = commentOpts
+        ? await addComment(args.issueId, body, commentOpts)
+        : await addComment(args.issueId, body);
       commentId = result.commentId;
       commentUrl = result.commentUrl;
       commentCreatedAt = result.commentCreatedAt;
       commentBodyLength = result.commentBodyLength;
       bodyFile = result.bodyFile ?? null;
+      chunkCount = result.chunkCount;
       commentPosted = true;
     }
   }
@@ -185,12 +196,15 @@ export async function executeTransition(
 
   // 10. Post comment (after update if not commentFirst)
   if (body && config.commentMode !== "none" && !config.commentFirst) {
-    const result = await addComment(args.issueId, body);
+    const result = commentOpts
+      ? await addComment(args.issueId, body, commentOpts)
+      : await addComment(args.issueId, body);
     commentId = result.commentId;
     commentUrl = result.commentUrl;
     commentCreatedAt = result.commentCreatedAt;
     commentBodyLength = result.commentBodyLength;
     bodyFile = result.bodyFile ?? null;
+    chunkCount = result.chunkCount;
     commentPosted = true;
   }
 
@@ -211,6 +225,7 @@ export async function executeTransition(
     commentBodyLength: commentBodyLength ?? null,
     bodyFile: bodyFile ?? null,
   };
+  if (chunkCount && chunkCount > 1) result.chunkCount = chunkCount;
 
   // 12. Include context for considerWork
   if (config.includeContext) {

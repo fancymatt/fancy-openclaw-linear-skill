@@ -6,6 +6,21 @@ import { linearGraphQL } from "./client";
 import { getSelfUser } from "./auth";
 import { ISSUE_FIELDS, STATE_BLOCK, ASSIGNEE_BLOCK, TEAM_BLOCK, DELEGATE_BLOCK } from "./fragments";
 import { CreateIssueInput, Issue, UpdateIssueInput } from "./types";
+import { chunkCommentBody, captionChunks, DEFAULT_MAX_COMMENT_BYTES } from "./chunk";
+
+export interface AddCommentOptions {
+  /** Maximum bytes per comment chunk. Defaults to DEFAULT_MAX_COMMENT_BYTES. */
+  maxBytes?: number;
+  /** When true, never split — let Linear's API error propagate if too long. */
+  noSplit?: boolean;
+}
+
+interface SinglePostResult {
+  commentId: string;
+  commentUrl: string;
+  commentCreatedAt: string;
+  body: string;
+}
 
 interface IssueResponse {
   issue: Issue | null;
@@ -463,16 +478,7 @@ function buildInlineNodes(
   return nodes;
 }
 
-export async function addComment(issueId: string, body: string): Promise<{ issueId: string; commentId: string; commentUrl: string; commentCreatedAt: string; commentBodyLength: number; body: string; bodyFile?: string }> {
-  let finalBody = body.replace(/\\n/g, "\n");
-  let tempFilePath: string | undefined;
-
-  if (Buffer.byteLength(body, "utf8") > 4 * 1024) {
-    tempFilePath = path.join(os.tmpdir(), `linear-comment-${issueId}-${Date.now()}.md`);
-    await fs.writeFile(tempFilePath, body, "utf8");
-    finalBody = await fs.readFile(tempFilePath, "utf8");
-  }
-
+async function postSingleComment(issueId: string, finalBody: string): Promise<SinglePostResult> {
   // Strategy 1: try Prosemirror bodyData with native issueMention nodes
   try {
     const bodyData = await buildProsemirrorBody(finalBody);
@@ -496,13 +502,10 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
 
       if (data.commentCreate.success && data.commentCreate.comment) {
         return {
-          issueId,
           commentId: data.commentCreate.comment.id,
           commentUrl: data.commentCreate.comment.url,
           commentCreatedAt: data.commentCreate.comment.createdAt,
-          commentBodyLength: Buffer.byteLength(finalBody, "utf8"),
           body: data.commentCreate.comment.body,
-          bodyFile: tempFilePath
         };
       }
     }
@@ -511,7 +514,7 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
   }
 
   // Strategy 2: Markdown with rewritten issue links
-  finalBody = await rewriteWithWorkspaceLinks(finalBody);
+  const rewritten = await rewriteWithWorkspaceLinks(finalBody);
 
   const data = await linearGraphQL<CommentCreateResponse>(
     `
@@ -527,7 +530,7 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
         }
       }
     `,
-    { issueId, body: finalBody }
+    { issueId, body: rewritten }
   );
 
   if (!data.commentCreate.success || !data.commentCreate.comment) {
@@ -535,13 +538,57 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
   }
 
   return {
-    issueId,
     commentId: data.commentCreate.comment.id,
     commentUrl: data.commentCreate.comment.url,
     commentCreatedAt: data.commentCreate.comment.createdAt,
-    commentBodyLength: Buffer.byteLength(finalBody, "utf8"),
     body: data.commentCreate.comment.body,
-    bodyFile: tempFilePath
+  };
+}
+
+export async function addComment(
+  issueId: string,
+  body: string,
+  options?: AddCommentOptions
+): Promise<{ issueId: string; commentId: string; commentUrl: string; commentCreatedAt: string; commentBodyLength: number; body: string; bodyFile?: string; chunkCount?: number; chunkCommentIds?: string[] }> {
+  let finalBody = body.replace(/\\n/g, "\n");
+  let tempFilePath: string | undefined;
+
+  if (Buffer.byteLength(body, "utf8") > 4 * 1024) {
+    tempFilePath = path.join(os.tmpdir(), `linear-comment-${issueId}-${Date.now()}.md`);
+    await fs.writeFile(tempFilePath, body, "utf8");
+    finalBody = await fs.readFile(tempFilePath, "utf8");
+  }
+
+  const maxBytes = options?.maxBytes ?? DEFAULT_MAX_COMMENT_BYTES;
+  const noSplit = options?.noSplit === true;
+  const totalBytes = Buffer.byteLength(finalBody, "utf8");
+
+  const rawChunks =
+    noSplit || totalBytes <= maxBytes
+      ? [finalBody]
+      : chunkCommentBody(finalBody, maxBytes);
+  const chunks = captionChunks(rawChunks);
+
+  let first: SinglePostResult | null = null;
+  const ids: string[] = [];
+  for (const chunk of chunks) {
+    const res = await postSingleComment(issueId, chunk);
+    ids.push(res.commentId);
+    if (first === null) first = res;
+  }
+  if (!first) {
+    throw new Error(`Failed to create comment for issue ${issueId}.`);
+  }
+
+  return {
+    issueId,
+    commentId: first.commentId,
+    commentUrl: first.commentUrl,
+    commentCreatedAt: first.commentCreatedAt,
+    commentBodyLength: totalBytes,
+    body: first.body,
+    bodyFile: tempFilePath,
+    ...(chunks.length > 1 ? { chunkCount: chunks.length, chunkCommentIds: ids } : {}),
   };
 }
 
