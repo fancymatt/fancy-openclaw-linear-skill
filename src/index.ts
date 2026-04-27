@@ -8,7 +8,7 @@ import { getMyBlocked } from "./blocked";
 import { getBoard, getReviewQueue, getStalled } from "./boards";
 import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue, note } from "./semantic";
 import { addComment, createIssue, findUserByName, resolveUserWithHints, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue, verifyComment } from "./issues";
-import { attachIssueToMilestone, attachIssueToProject, createMilestone, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
+import { attachIssueToMilestone, attachIssueToProject, createMilestone, findProjectByName, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
 import { createBlockingRelation, listRelations, removeBlockingRelation } from "./relations";
 import { findStateByName, getWorkflowStates } from "./states";
 import { listTeams, resolveTeamId } from "./teams";
@@ -304,7 +304,7 @@ async function main(): Promise<void> {
     .argument("<team>")
     .argument("<title>")
     .option("--description <description>")
-    .option("--project <projectId>")
+    .option("--project <name|id>", "Project name or ID")
     .option("--milestone <milestoneId>")
     .option("--assignee <name|uuid>")
     .option("--delegate <name|uuid>")
@@ -315,10 +315,15 @@ async function main(): Promise<void> {
         const teamId = await resolveTeamId(team);
         const assigneeId = options.assignee ? await resolveUserWithHints(options.assignee, "create") : undefined;
         const delegateId = options.delegate ? await resolveUserWithHints(options.delegate, "create") : undefined;
+        let projectId = options.project;
+        if (projectId && !projectId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+          const project = await findProjectByName(projectId);
+          projectId = project.id;
+        }
         const input: CreateIssueInput = {
           title,
           description: options.description,
-          projectId: options.project,
+          projectId,
           projectMilestoneId: options.milestone,
           assigneeId,
           delegateId,

@@ -51,7 +51,7 @@ export async function observeIssue(
   sinceTimestamp?: string
 ): Promise<ObserveResult> {
   const issue = await getIssue(issueId);
-  const comments = await getComments(issue.id, allComments, sinceTimestamp);
+  const comments = await getComments(issue.id, allComments);
 
   const rawComments = comments.map((c) => ({
     id: c.id,
@@ -63,6 +63,10 @@ export async function observeIssue(
   // Explicit ascending sort by createdAt (guarantee for consumers)
   rawComments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
+  const filteredComments = sinceTimestamp
+    ? rawComments.filter((c) => c.createdAt >= sinceTimestamp)
+    : rawComments;
+
   return {
     identifier: issue.identifier,
     title: issue.title,
@@ -72,7 +76,7 @@ export async function observeIssue(
     priority: issue.priority ?? 0,
     assignee: issue.assignee ? { name: issue.assignee.name } : null,
     delegate: issue.delegate ? { name: issue.delegate.name } : null,
-    comments: rawComments,
+    comments: filteredComments,
   };
 }
 
