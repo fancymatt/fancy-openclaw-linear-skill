@@ -16,7 +16,11 @@ const mockBlockedIssue = (id: string) => ({
   priority: 2,
   state: { id: `s-${id}`, name: "Blocked", type: "started" },
   assignee: { id: "u-1", name: "Matt", email: "m@example.com" },
-  team: { id: "t-1", key: "AI", name: "AI Systems" }
+  team: { id: "t-1", key: "AI", name: "AI Systems" },
+  labels: [],
+  relations: [],
+  comments: [],
+  children: []
 });
 
 describe("getMyBlocked", () => {
@@ -32,7 +36,7 @@ describe("getMyBlocked", () => {
     });
     const results = await getMyBlocked();
     expect(results).toHaveLength(2);
-    expect(results[0].state.name).toBe("Blocked");
+    expect(results[0].state?.name).toBe("Blocked");
   });
 
   it("returns empty array when no blocked issues", async () => {

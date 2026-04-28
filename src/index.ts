@@ -240,21 +240,31 @@ async function main(): Promise<void> {
 
   // --- Consolidated queue + my-issues commands ---
 
+  // --- Extracted handler functions for canonical commands ---
+
+  async function handleQueue(options: { next?: boolean; blocked?: boolean; project?: string }): Promise<unknown> {
+    if (options.blocked) return getMyBlocked(undefined);
+    const queue = await getMyQueue(options.project);
+    if (options.next) {
+      if (queue.length === 0) return { message: "Queue is empty — nothing to do." };
+      return queue[0];
+    }
+    return queue;
+  }
+
+  async function handleMyIssues(options: { status?: string; new?: boolean; since?: string }): Promise<unknown> {
+    if (options.new) return getMyNewIssues(options.since);
+    if (options.status) return getMyIssues([options.status]);
+    return getMyIssues();
+  }
+
   program.command("queue")
     .description("Issues delegated to you (your work queue)")
     .option("--next", "Return only the highest-priority issue")
     .option("--blocked", "Show only blocked issues")
     .option("--project <name>", "Filter by project name")
     .action(async (options: { next?: boolean; blocked?: boolean; project?: string }) => {
-      await runCommand(async () => {
-        if (options.blocked) return getMyBlocked(undefined);
-        const queue = await getMyQueue(options.project);
-        if (options.next) {
-          if (queue.length === 0) return { message: "Queue is empty — nothing to do." };
-          return queue[0];
-        }
-        return queue;
-      }, program.opts<{ human?: boolean }>().human);
+      await runCommand(() => handleQueue(options), program.opts<{ human?: boolean }>().human);
     });
 
   program.command("my-issues")
@@ -263,36 +273,28 @@ async function main(): Promise<void> {
     .option("--new", "Show only new (unviewed) issues")
     .option("--since <iso>", "Issues created since this date")
     .action(async (options: { status?: string; new?: boolean; since?: string }) => {
-      await runCommand(async () => {
-        if (options.new) return getMyNewIssues(options.since);
-        if (options.status) return getMyIssues([options.status]);
-        return getMyIssues();
-      }, program.opts<{ human?: boolean }>().human);
+      await runCommand(() => handleMyIssues(options), program.opts<{ human?: boolean }>().human);
     });
 
   // --- Legacy my-* commands (hidden, backward compat) ---
   // These are thin wrappers that delegate to the canonical commands.
 
   program.command("my-todos", { hidden: true }).action(async () => {
-    await program.parseAsync(["node", "linear", "my-issues", "--status", "Todo"]);
+    await runCommand(() => handleMyIssues({ status: "Todo" }), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("my-new", { hidden: true }).option("--since <iso>").action(async (options: { since?: string }) => {
-    const args = ["node", "linear", "my-issues", "--new"];
-    if (options.since) args.push("--since", options.since);
-    await program.parseAsync(args);
+    await runCommand(() => handleMyIssues({ new: true, since: options.since }), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("my-queue", { hidden: true })
     .option("--project <name>", "Filter by project name")
     .action(async (options: { project?: string }) => {
-      const args = ["node", "linear", "queue"];
-      if (options.project) args.push("--project", options.project);
-      await program.parseAsync(args);
+      await runCommand(() => handleQueue({ project: options.project }), program.opts<{ human?: boolean }>().human);
     });
 
   program.command("my-next", { hidden: true }).action(async () => {
-    await program.parseAsync(["node", "linear", "queue", "--next"]);
+    await runCommand(() => handleQueue({ next: true }), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("issue").argument("<id>").action(async (id: string) => {
@@ -406,10 +408,7 @@ async function main(): Promise<void> {
 
   program.command("handoff", { hidden: true }).argument("<id>").argument("<reviewer>").argument("[comment]").option("--comment-file <path>").option("--silence-deprecation", "Suppress deprecation warning").action(async (id: string, reviewer: string, comment: string | undefined, options: { commentFile?: string; silenceDeprecation?: boolean }) => {
     deprecationWarn("handoff", options.silenceDeprecation);
-    const args = ["node", "linear", "handoff-work", id, reviewer];
-    if (comment) args.push(comment);
-    if (options.commentFile) args.push("--comment-file", options.commentFile);
-    await program.parseAsync(args);
+    await runCommand(async () => handoffWork(id, reviewer, { comment, commentFile: options.commentFile }), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("projects").action(async () => {
@@ -476,9 +475,7 @@ async function main(): Promise<void> {
     await runCommand(async () => getStalled(days ? Number(days) : 2), program.opts<{ human?: boolean }>().human);
   });
   program.command("comments", { hidden: true }).argument("<id>").option("--all").action(async (id: string, options: { all?: boolean }) => {
-    const args = ["node", "linear", "observe-issue", id];
-    if (options.all) args.push("--all");
-    await program.parseAsync(args);
+    await runCommand(async () => observeIssue(id, options.all, undefined), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("upload").argument("<file>").option("--comment <issueId>").action(async (file: string, options: { comment?: string }) => {
@@ -650,8 +647,8 @@ async function main(): Promise<void> {
 
   // --- My blocked (hidden, backward compat) ---
 
-  program.command("my-blocked", { hidden: true }).option("--limit <n>").description("Show issues assigned to me that are Blocked").action(async (options: { limit?: string }) => {
-    await program.parseAsync(["node", "linear", "queue", "--blocked"]);
+  program.command("my-blocked", { hidden: true }).option("--limit <n>").description("Show issues assigned to me that are Blocked").action(async () => {
+    await runCommand(() => handleQueue({ blocked: true }), program.opts<{ human?: boolean }>().human);
   });
 
   // --- Semantic commands ---

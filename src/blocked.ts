@@ -1,27 +1,16 @@
 import { linearGraphQL } from "./client";
+import { Issue } from "./types";
 import { STATE_BLOCK, ASSIGNEE_BLOCK, TEAM_BLOCK } from "./fragments";
-
-interface BlockedIssue {
-  id: string;
-  identifier: string;
-  title: string;
-  updatedAt: string;
-  priority: number;
-  state: { id: string; name: string; type: string };
-  assignee: { id: string; name: string; email: string } | null;
-  team: { id: string; key: string; name: string };
-  project?: { id: string; name: string };
-}
 
 interface BlockedResponse {
   viewer: {
     assignedIssues: {
-      nodes: BlockedIssue[];
+      nodes: Issue[];
     };
   };
 }
 
-export async function getMyBlocked(limit?: number): Promise<BlockedIssue[]> {
+export async function getMyBlocked(limit?: number): Promise<Issue[]> {
   const first = limit ?? 50;
 
   const data = await linearGraphQL<BlockedResponse>(
