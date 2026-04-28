@@ -11,7 +11,9 @@ import {
   complete,
   needsHuman,
   note,
+  historyToTimelineEvents,
 } from "../semantic";
+import { IssueHistory } from "../types";
 
 jest.mock("../client", () => ({
   ...jest.requireActual("../client"),
@@ -33,6 +35,7 @@ jest.mock("../issues", () => ({
 
 jest.mock("../boards", () => ({
   getComments: jest.fn().mockResolvedValue([]),
+  getIssueHistory: jest.fn().mockResolvedValue([]),
 }));
 
 import { getComments } from "../boards";
@@ -341,5 +344,77 @@ describe("note", () => {
 
   it("throws when comment is whitespace-only", async () => {
     await expect(note("AI-100", { comment: "   " })).rejects.toThrow("non-empty comment");
+  });
+});
+
+describe("historyToTimelineEvents", () => {
+  it("returns empty array for empty/undefined input", () => {
+    expect(historyToTimelineEvents([])).toEqual([]);
+    expect(historyToTimelineEvents(undefined)).toEqual([]);
+  });
+
+  it("emits one event per field change", () => {
+    const history: IssueHistory[] = [
+      {
+        createdAt: "2026-04-26T12:00:00Z",
+        actor: { name: "Charles" },
+        fromState: { name: "Todo" },
+        toState: { name: "In Progress" },
+        fromAssignee: null,
+        toAssignee: { name: "Igor" },
+        fromDelegate: null,
+        toDelegate: null,
+        fromPriority: null,
+        toPriority: null,
+      },
+    ];
+    const events = historyToTimelineEvents(history);
+    expect(events).toHaveLength(2);
+    expect(events[0].type).toBe("state");
+    expect(events[0].from).toBe("Todo");
+    expect(events[0].to).toBe("In Progress");
+    expect(events[1].type).toBe("assignee");
+    expect(events[1].from).toBe(null);
+    expect(events[1].to).toBe("Igor");
+  });
+
+  it("preserves chronological order", () => {
+    const history: IssueHistory[] = [
+      {
+        createdAt: "2026-04-26T14:00:00Z",
+        actor: { name: "Igor" },
+        fromState: { name: "In Progress" },
+        toState: { name: "Done" },
+        fromAssignee: null, toAssignee: null,
+        fromDelegate: null, toDelegate: null,
+        fromPriority: null, toPriority: null,
+      },
+      {
+        createdAt: "2026-04-26T12:00:00Z",
+        actor: { name: "Charles" },
+        fromState: { name: "Todo" },
+        toState: { name: "In Progress" },
+        fromAssignee: null, toAssignee: null,
+        fromDelegate: null, toDelegate: null,
+        fromPriority: null, toPriority: null,
+      },
+    ];
+    const events = historyToTimelineEvents(history);
+    expect(events[0].to).toBe("In Progress");
+    expect(events[1].to).toBe("Done");
+  });
+
+  it("skips history records with no relevant changes", () => {
+    const history: IssueHistory[] = [
+      {
+        createdAt: "2026-04-26T12:00:00Z",
+        actor: { name: "Someone" },
+        fromState: null, toState: null,
+        fromAssignee: null, toAssignee: null,
+        fromDelegate: null, toDelegate: null,
+        fromPriority: null, toPriority: null,
+      },
+    ];
+    expect(historyToTimelineEvents(history)).toEqual([]);
   });
 });

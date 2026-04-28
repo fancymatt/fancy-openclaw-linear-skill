@@ -1,6 +1,6 @@
 import { linearGraphQL } from "./client";
 import { STATE_BLOCK, ASSIGNEE_BLOCK, TEAM_BLOCK } from "./fragments";
-import { Comment, Issue } from "./types";
+import { Comment, Issue, IssueHistory } from "./types";
 
 interface TeamIssuesResponse {
   team: {
@@ -22,6 +22,14 @@ interface CommentsResponse {
   issue: {
     comments: {
       nodes: Comment[];
+    };
+  } | null;
+}
+
+interface IssueHistoryResponse {
+  issue: {
+    history: {
+      nodes: IssueHistory[];
     };
   } | null;
 }
@@ -143,4 +151,48 @@ export async function getComments(issueId: string, all = true): Promise<Comment[
 
   // Linear returns newest-first; reverse for chronological reading order
   return data.issue.comments.nodes.reverse();
+}
+
+/**
+ * Fetch an issue's history (state, assignee, delegate, priority changes).
+ *
+ * Returns events sorted ascending by createdAt for direct interleaving with
+ * comments in a chronological timeline. Returns up to `count` most recent
+ * events (default 50). Each record may describe multiple field changes —
+ * inspect the `from*`/`to*` fields to detect which.
+ */
+export async function getIssueHistory(
+  issueId: string,
+  count = 50
+): Promise<IssueHistory[]> {
+  const data = await linearGraphQL<IssueHistoryResponse>(
+    `
+      query IssueHistory($id: String!, $count: Int!) {
+        issue(id: $id) {
+          history(first: $count) {
+            nodes {
+              createdAt
+              actor { name }
+              fromState { name }
+              toState { name }
+              fromAssignee { name }
+              toAssignee { name }
+              fromDelegate { name }
+              toDelegate { name }
+              fromPriority
+              toPriority
+            }
+          }
+        }
+      }
+    `,
+    { id: issueId, count }
+  );
+
+  if (!data.issue) {
+    throw new Error(`Issue not found: ${issueId}`);
+  }
+
+  // Linear returns newest-first; reverse for chronological reading order
+  return data.issue.history.nodes.reverse();
 }

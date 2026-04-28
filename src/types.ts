@@ -20,6 +20,24 @@ export interface Comment {
   user?: User | null;
 }
 
+/**
+ * Single record in an issue's history. Each record describes one or more
+ * field changes recorded by Linear. Use the `from*`/`to*` fields to detect
+ * which changes happened.
+ */
+export interface IssueHistory {
+  createdAt: string;
+  actor: { name: string } | null;
+  fromState: { name: string } | null;
+  toState: { name: string } | null;
+  fromAssignee: { name: string } | null;
+  toAssignee: { name: string } | null;
+  fromDelegate: { name: string } | null;
+  toDelegate: { name: string } | null;
+  fromPriority: number | null;
+  toPriority: number | null;
+}
+
 export interface ProjectMilestone {
   id: string;
   name: string;

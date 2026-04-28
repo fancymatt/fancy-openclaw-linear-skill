@@ -91,6 +91,10 @@ function isObserveResult(value: unknown): value is ObserveResult {
   );
 }
 
+type RenderEvent =
+  | { kind: "comment"; createdAt: string; body: string; user: string }
+  | { kind: "history"; createdAt: string; actor: string | null; type: "state" | "delegate" | "assignee" | "priority"; from: string | null; to: string | null };
+
 function renderTimeline(data: ObserveResult): string {
   const lines: string[] = [];
   const sep = "─".repeat(56);
@@ -116,13 +120,31 @@ function renderTimeline(data: ObserveResult): string {
     lines.push(`📌 ${data.createdAt} (${rel}) — Issue created`);
   }
 
-  // Comments
-  for (const comment of data.comments) {
-    const rel = comment.createdAt ? relativeTime(comment.createdAt) : "";
-    const user = comment.user?.name ?? "Unknown";
+  // Merge comments + history into one chronological stream
+  const merged: RenderEvent[] = [
+    ...data.comments.map((c): RenderEvent => ({
+      kind: "comment", createdAt: c.createdAt, body: c.body, user: c.user?.name ?? "Unknown",
+    })),
+    ...(data.history ?? []).map((h): RenderEvent => ({
+      kind: "history", createdAt: h.createdAt, actor: h.actor, type: h.type, from: h.from, to: h.to,
+    })),
+  ];
+  merged.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  for (const ev of merged) {
+    const rel = ev.createdAt ? relativeTime(ev.createdAt) : "";
+    const stamp = `${ev.createdAt}${rel ? ` (${rel})` : ""}`;
     lines.push("");
-    lines.push(`💬 ${comment.createdAt}${rel ? ` (${rel})` : ""} — ${user}`);
-    lines.push(`   ${wrapText(comment.body, 70).split("\n").join("\n   ")}`);
+    if (ev.kind === "comment") {
+      lines.push(`💬 ${stamp} — ${ev.user}`);
+      lines.push(`   ${wrapText(ev.body, 70).split("\n").join("\n   ")}`);
+    } else {
+      const actor = ev.actor ? ` by ${ev.actor}` : "";
+      const from = ev.from ?? "—";
+      const to = ev.to ?? "—";
+      const label = ev.type[0].toUpperCase() + ev.type.slice(1);
+      lines.push(`🔄 ${stamp}${actor} — ${label}: ${from} → ${to}`);
+    }
   }
 
   return lines.join("\n") + "\n";

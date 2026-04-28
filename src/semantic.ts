@@ -5,11 +5,26 @@ import {
   type TransitionArgs,
   type TransitionResult,
 } from "./state-machine";
-import { getComments } from "./boards";
+import { getComments, getIssueHistory } from "./boards";
 import { addComment, getIssue } from "./issues";
+import { IssueHistory } from "./types";
 
 /**
- * Result of observing an issue. Comments are sorted ascending by createdAt.
+ * One state/delegate/assignee/priority change derived from Linear's issue
+ * history. A single Linear history record may produce multiple events (e.g.
+ * a state change and a delegate change in one update become two events).
+ */
+export interface TimelineEvent {
+  createdAt: string;
+  actor: string | null;
+  type: "state" | "delegate" | "assignee" | "priority";
+  from: string | null;
+  to: string | null;
+}
+
+/**
+ * Result of observing an issue. Comments and history are both sorted
+ * ascending by createdAt.
  */
 export interface ObserveResult {
   identifier: string;
@@ -22,6 +37,8 @@ export interface ObserveResult {
   delegate: { name: string } | null;
   /** Sorted ascending by createdAt */
   comments: Array<{ id: string; body: string; createdAt: string; user: { name: string } }>;
+  /** Sorted ascending by createdAt */
+  history: TimelineEvent[];
 }
 
 export interface SemanticResult {
@@ -51,7 +68,10 @@ export async function observeIssue(
   sinceTimestamp?: string
 ): Promise<ObserveResult> {
   const issue = await getIssue(issueId);
-  const comments = await getComments(issue.id, allComments);
+  const [comments, history] = await Promise.all([
+    getComments(issue.id, allComments),
+    getIssueHistory(issue.id),
+  ]);
 
   const rawComments = comments.map((c) => ({
     id: c.id,
@@ -77,7 +97,49 @@ export async function observeIssue(
     assignee: issue.assignee ? { name: issue.assignee.name } : null,
     delegate: issue.delegate ? { name: issue.delegate.name } : null,
     comments: filteredComments,
+    history: historyToTimelineEvents(history),
   };
+}
+
+/**
+ * Flatten Linear's IssueHistory records into per-field TimelineEvents.
+ * A single history record can contain multiple field changes — we emit one
+ * event per non-null change so consumers can render each on its own line.
+ * Result is sorted ascending by createdAt.
+ */
+export function historyToTimelineEvents(history?: IssueHistory[]): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+  if (!history || !Array.isArray(history)) return events;
+  for (const h of history) {
+    const actor = h.actor?.name ?? null;
+    if (h.fromState || h.toState) {
+      events.push({
+        createdAt: h.createdAt, actor, type: "state",
+        from: h.fromState?.name ?? null, to: h.toState?.name ?? null,
+      });
+    }
+    if (h.fromDelegate || h.toDelegate) {
+      events.push({
+        createdAt: h.createdAt, actor, type: "delegate",
+        from: h.fromDelegate?.name ?? null, to: h.toDelegate?.name ?? null,
+      });
+    }
+    if (h.fromAssignee || h.toAssignee) {
+      events.push({
+        createdAt: h.createdAt, actor, type: "assignee",
+        from: h.fromAssignee?.name ?? null, to: h.toAssignee?.name ?? null,
+      });
+    }
+    if (h.fromPriority !== null || h.toPriority !== null) {
+      events.push({
+        createdAt: h.createdAt, actor, type: "priority",
+        from: h.fromPriority !== null ? String(h.fromPriority) : null,
+        to: h.toPriority !== null ? String(h.toPriority) : null,
+      });
+    }
+  }
+  events.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return events;
 }
 
 /**
