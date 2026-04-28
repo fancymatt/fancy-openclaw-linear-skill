@@ -30,7 +30,13 @@ These are the ONLY commands agents should use for workflow state transitions. Ev
 ```
 linear observe-issue <ID>             # Read issue + last 10 comments (no ownership change)
 linear observe-issue <ID> --all       # Read issue + ALL comments
+linear observe-issue <ID> --human     # Chronological timeline: creation +
+                                      #   comments + state/delegate/assignee/
+                                      #   priority change events, each with
+                                      #   ISO and relative timestamp.
 ```
+
+JSON output has `comments[]` and `history[]` sorted ascending by `createdAt` — agents can read sequentially without re-sorting.
 
 Use `observe-issue` when you are @mentioned (not delegated) or doing a board sweep. No state changes.
 
