@@ -99,6 +99,8 @@ export interface StateTransition {
   skipIfSameState?: boolean;
   /** Include context (issue + comments) in result? (for considerWork) */
   includeContext?: boolean;
+  /** Do not mutate terminal Linear issues (completed/canceled). Used by stale delegation hooks. */
+  noopOnTerminal?: boolean;
 }
 
 export interface TransitionArgs {
@@ -113,6 +115,39 @@ export interface TransitionArgs {
 
 export interface TransitionResult extends SemanticResult {
   context?: ObserveResult;
+}
+
+function isTerminalState(state?: { name?: string | null; type?: string | null } | null): boolean {
+  const type = state?.type?.toLowerCase() ?? "";
+  const name = state?.name?.toLowerCase() ?? "";
+  return type === "completed" || type === "canceled" || name === "done" || name === "canceled" || name === "cancelled";
+}
+
+async function buildObserveContext(issue: Awaited<ReturnType<typeof getIssue>>): Promise<ObserveResult> {
+  const [comments, history] = await Promise.all([
+    getComments(issue.id),
+    getIssueHistory(issue.id),
+  ]);
+  const rawComments = comments.map((c) => ({
+    id: c.id,
+    body: c.body,
+    createdAt: c.createdAt ?? "",
+    user: c.user ? { name: c.user.name } : { name: "Unknown" },
+  }));
+  rawComments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  return {
+    identifier: issue.identifier,
+    title: issue.title,
+    description: issue.description ?? "",
+    createdAt: issue.createdAt ?? "",
+    state: { name: issue.state?.name ?? "Unknown" },
+    priority: issue.priority ?? 0,
+    assignee: issue.assignee ? { name: issue.assignee.name } : null,
+    delegate: issue.delegate ? { name: issue.delegate.name } : null,
+    comments: rawComments,
+    history: historyToTimelineEvents(history),
+  };
 }
 
 // --- State machine executor ---
@@ -133,6 +168,26 @@ export async function executeTransition(
   const teamId = issue.team?.id;
   if (!teamId) {
     throw new Error(`Issue ${issue.identifier} has no team.`);
+  }
+
+  if (config.noopOnTerminal && isTerminalState(issue.state)) {
+    const result: TransitionResult = {
+      command: commandName,
+      issueId: issue.identifier,
+      state: issue.state?.name ?? "Unknown",
+      delegate: issue.delegate?.name ?? null,
+      assignee: issue.assignee?.name ?? null,
+      commentPosted: false,
+      commentId: null,
+      commentUrl: null,
+      commentCreatedAt: null,
+      commentBodyLength: null,
+      bodyFile: null,
+    };
+    if (config.includeContext) {
+      result.context = await buildObserveContext(issue);
+    }
+    return result;
   }
 
   // 2. Resolve target state
@@ -280,30 +335,7 @@ export async function executeTransition(
 
   // 12. Include context for considerWork
   if (config.includeContext) {
-    const [comments, history] = await Promise.all([
-      getComments(updatedIssue.id),
-      getIssueHistory(updatedIssue.id),
-    ]);
-    const rawComments = comments.map((c) => ({
-      id: c.id,
-      body: c.body,
-      createdAt: c.createdAt ?? "",
-      user: c.user ? { name: c.user.name } : { name: "Unknown" },
-    }));
-    rawComments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-    result.context = {
-      identifier: updatedIssue.identifier,
-      title: updatedIssue.title,
-      description: updatedIssue.description ?? "",
-      createdAt: updatedIssue.createdAt ?? "",
-      state: { name: updatedIssue.state?.name ?? "Unknown" },
-      priority: updatedIssue.priority ?? 0,
-      assignee: updatedIssue.assignee ? { name: updatedIssue.assignee.name } : null,
-      delegate: updatedIssue.delegate ? { name: updatedIssue.delegate.name } : null,
-      comments: rawComments,
-      history: historyToTimelineEvents(history),
-    };
+    result.context = await buildObserveContext(updatedIssue);
   }
 
   return result;

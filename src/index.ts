@@ -685,8 +685,8 @@ async function main(): Promise<void> {
     await runCommand(async () => observeIssue(id, options.all, options.since), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("consider-work").alias("considerWork").argument("<id>").description("Mark issue as being considered by agent (returns issue context)").action(async (id: string) => {
-    await runCommand(async () => considerWork(id), program.opts<{ human?: boolean }>().human);
+  program.command("consider-work").alias("considerWork").argument("<id>").option("--force", "Allow reopening Done/Canceled issues").description("Mark issue as being considered by agent (returns issue context)").action(async (id: string, options: { force?: boolean }) => {
+    await runCommand(async () => considerWork(id, { force: options.force }), program.opts<{ human?: boolean }>().human);
   });
 
   program.command("refuse-work").alias("refuseWork").argument("<id>").argument("<delegate>", "agent display name in quotes, e.g. \"Astrid (CPO)\"").option("--comment <msg>").option("--comment-file <path>").description("Refuse task and delegate to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string }) => {

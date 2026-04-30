@@ -111,7 +111,7 @@ You should see your Linear user name and email printed. If not, see `references/
 
 | Command | Description |
 |---|---|
-| `linear consider-work <id>` | Mark issue as being considered (status → Thinking, delegate → self, assignee cleared). Returns issue context. |
+| `linear consider-work <id>` | Mark issue as being considered (status → Thinking, delegate → self, assignee cleared). Returns issue context. No-ops on Done/Canceled tickets unless `--force` is supplied. |
 | `linear begin-work <id>` | Begin actively working (status → Doing). Idempotent. |
 | `linear handoff-work <id> <agent> [--comment <msg>] [--comment-file <path>]` | Hand off task to another agent. Sets delegate, clears assignee, posts comment. |
 | `linear complete <id> [--comment <msg>] [--comment-file <path>]` | Mark task as Done, clear delegate. |
