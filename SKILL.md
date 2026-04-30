@@ -43,7 +43,8 @@ Use `observe-issue` when you are @mentioned (not delegated) or doing a board swe
 #### Write Commands
 
 ```
-linear consider-work <ID>             # Accept delegation: set delegate=self, status=Thinking, clear assignee
+linear consider-work <ID>             # Accept delegation: set delegate=self, status=Thinking, clear assignee; no-op on Done/Canceled
+linear consider-work <ID> --force     # Explicitly allow reopening Done/Canceled issues
                                       # Returns issue context + last 10 comments
 linear begin-work <ID>                # Start active work: status=Doing (idempotent)
 linear refuse-work <ID> <agent>       # Decline: status=Todo, delegate to another agent (requires --comment)

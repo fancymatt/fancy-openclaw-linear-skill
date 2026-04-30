@@ -150,6 +150,60 @@ describe("considerWork", () => {
     expect(mockAddComment).not.toHaveBeenCalled();
     expect(result.state).toBe("In Progress");
   });
+
+  it("no-ops on Done tickets so stale delegation hooks do not reopen completed work", async () => {
+    mockGetIssue.mockResolvedValue({
+      ...baseIssue,
+      identifier: "AI-501",
+      state: { id: "state-done", name: "Done", type: "completed" },
+      delegate: null,
+      assignee: null,
+    });
+
+    const result = await considerWork("AI-501");
+
+    expect(mockFindSemanticState).not.toHaveBeenCalled();
+    expect(mockGetSelfUser).not.toHaveBeenCalled();
+    expect(mockUpdateIssue).not.toHaveBeenCalled();
+    expect(mockAddComment).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      command: "considerWork",
+      issueId: "AI-501",
+      state: "Done",
+      delegate: null,
+      assignee: null,
+      commentPosted: false,
+    });
+    expect(result.context?.state.name).toBe("Done");
+  });
+
+  it("no-ops on Canceled tickets", async () => {
+    mockGetIssue.mockResolvedValue({
+      ...baseIssue,
+      state: { id: "state-canceled", name: "Canceled", type: "canceled" },
+    });
+
+    const result = await considerWork("AI-100");
+
+    expect(mockUpdateIssue).not.toHaveBeenCalled();
+    expect(result.state).toBe("Canceled");
+  });
+
+  it("can force considerWork on a terminal ticket", async () => {
+    mockGetIssue.mockResolvedValue({
+      ...baseIssue,
+      state: { id: "state-done", name: "Done", type: "completed" },
+    });
+
+    const result = await considerWork("AI-100", { force: true });
+
+    expect(mockUpdateIssue).toHaveBeenCalledWith("AI-100", {
+      stateId: "state-thinking",
+      delegateId: "user-igor",
+      assigneeId: null,
+    });
+    expect(result.state).toBe("In Progress");
+  });
 });
 
 describe("refuseWork", () => {

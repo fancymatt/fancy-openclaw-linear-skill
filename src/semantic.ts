@@ -153,7 +153,8 @@ export function historyToTimelineEvents(history?: IssueHistory[]): TimelineEvent
  * - No comment (agents only comment through handoffs)
  */
 export async function considerWork(
-  issueId: string
+  issueId: string,
+  options?: { force?: boolean }
 ): Promise<SemanticResult & { context?: ObserveResult }> {
   return executeTransition("considerWork", { issueId }, {
     targetState: "thinking",
@@ -162,6 +163,7 @@ export async function considerWork(
     clearAssignee: true,
     includeContext: true,
     skipIfSameState: true,
+    noopOnTerminal: !options?.force,
   });
 }
 
