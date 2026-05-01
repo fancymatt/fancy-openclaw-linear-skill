@@ -7,12 +7,14 @@ import { addComment } from "./issues";
 interface FileUploadResponse {
   fileUpload: {
     success: boolean;
-    uploadUrl: string;
-    assetUrl: string;
-    headers?: Array<{
-      key: string;
-      value: string;
-    }>;
+    uploadFile?: {
+      uploadUrl: string;
+      assetUrl: string;
+      headers?: Array<{
+        key: string;
+        value: string;
+      }>;
+    };
   };
 }
 
@@ -48,11 +50,13 @@ export async function uploadFile(
       mutation FileUpload($contentType: String!, $filename: String!, $size: Int!) {
         fileUpload(contentType: $contentType, filename: $filename, size: $size) {
           success
-          uploadUrl
-          assetUrl
-          headers {
-            key
-            value
+          uploadFile {
+            uploadUrl
+            assetUrl
+            headers {
+              key
+              value
+            }
           }
         }
       }
@@ -64,24 +68,25 @@ export async function uploadFile(
     }
   );
 
-  if (!data.fileUpload.success || !data.fileUpload.uploadUrl || !data.fileUpload.assetUrl) {
+  const upload = data.fileUpload.uploadFile;
+  if (!data.fileUpload.success || !upload?.uploadUrl || !upload?.assetUrl) {
     throw new Error(`Failed to initialize upload for ${filePath}.`);
   }
 
   await putPresignedFile(
-    data.fileUpload.uploadUrl,
+    upload.uploadUrl,
     content,
     contentType,
-    data.fileUpload.headers
+    upload.headers
   );
 
   if (issueId) {
-    await addComment(issueId, data.fileUpload.assetUrl);
+    await addComment(issueId, upload.assetUrl);
   }
 
   return {
     filePath,
-    assetUrl: data.fileUpload.assetUrl,
+    assetUrl: upload.assetUrl,
     issueCommented: Boolean(issueId)
   };
 }

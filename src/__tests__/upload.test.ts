@@ -31,9 +31,11 @@ describe("uploadFile", () => {
     mockedGraphQL.mockResolvedValue({
       fileUpload: {
         success: true,
-        uploadUrl: "https://presigned-url.example.com/upload",
-        assetUrl: "https://assets.linear.app/test.txt",
-        headers: [{ key: "x-amz-tag", value: "test" }]
+        uploadFile: {
+          uploadUrl: "https://presigned-url.example.com/upload",
+          assetUrl: "https://assets.linear.app/test.txt",
+          headers: [{ key: "x-amz-tag", value: "test" }]
+        }
       }
     });
 
@@ -52,7 +54,7 @@ describe("uploadFile", () => {
   it("detects content type by extension", async () => {
     jest.spyOn(fs, "readFile").mockResolvedValueOnce(Buffer.from("png-data"));
     mockedGraphQL.mockResolvedValue({
-      fileUpload: { success: true, uploadUrl: "https://url", assetUrl: "https://asset", headers: [] }
+      fileUpload: { success: true, uploadFile: { uploadUrl: "https://url", assetUrl: "https://asset", headers: [] } }
     });
 
     await uploadFile("/path/to/image.png");
@@ -65,7 +67,7 @@ describe("uploadFile", () => {
   it("posts comment with asset URL when issueId provided", async () => {
     jest.spyOn(fs, "readFile").mockResolvedValueOnce(Buffer.from("data"));
     mockedGraphQL.mockResolvedValue({
-      fileUpload: { success: true, uploadUrl: "https://url", assetUrl: "https://asset/file.md", headers: [] }
+      fileUpload: { success: true, uploadFile: { uploadUrl: "https://url", assetUrl: "https://asset/file.md", headers: [] } }
     });
     mockAddComment.mockResolvedValue({ issueId: "AI-100", commentId: "comment-uuid", commentUrl: "https://linear.app/test/comment/comment-uuid", commentCreatedAt: "2026-04-26T12:00:00Z", commentBodyLength: 20, body: "https://asset/file.md" });
 
@@ -77,7 +79,7 @@ describe("uploadFile", () => {
   it("throws when upload initialization fails", async () => {
     jest.spyOn(fs, "readFile").mockResolvedValueOnce(Buffer.from("data"));
     mockedGraphQL.mockResolvedValue({
-      fileUpload: { success: false, uploadUrl: null, assetUrl: null, headers: [] }
+      fileUpload: { success: false, uploadFile: null }
     });
     await expect(uploadFile("/path/to/fail.txt")).rejects.toThrow("Failed to initialize upload");
   });
