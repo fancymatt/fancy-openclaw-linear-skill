@@ -9,11 +9,30 @@ jest.mock("../client", () => ({
 const mockedLinearGraphQL = linearGraphQL as jest.MockedFunction<typeof linearGraphQL>;
 
 describe("checkAuth", () => {
+  const ENV_KEYS = ["LINEAR_OAUTH_TOKEN", "LINEAR_API_KEY", "LINEAR_DEVELOPER_TOKEN", "HOME"] as const;
+  const saved: Partial<Record<typeof ENV_KEYS[number], string | undefined>> = {};
+  let cwdSpy: jest.SpyInstance;
+
   beforeEach(() => {
     mockedLinearGraphQL.mockReset();
+    for (const key of ENV_KEYS) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+    process.env.HOME = "/tmp/no-linear-secrets-home";
+    cwdSpy = jest.spyOn(process, "cwd").mockReturnValue("/tmp/no-linear-secrets-cwd");
+  });
+
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+    cwdSpy.mockRestore();
   });
 
   it("returns the viewer on success", async () => {
+    process.env.LINEAR_API_KEY = "test-token";
     mockedLinearGraphQL.mockResolvedValue({
       viewer: {
         id: "user-1",
@@ -30,12 +49,11 @@ describe("checkAuth", () => {
   });
 
   it("fails loudly when LINEAR_API_KEY is missing", async () => {
-    mockedLinearGraphQL.mockRejectedValue(new Error("No LINEAR_API_KEY set. Set it via the linear-access skill."));
-
-    await expect(checkAuth()).rejects.toThrow("No LINEAR_API_KEY set. Set it via the linear-access skill.");
+    await expect(checkAuth()).rejects.toThrow("No Linear API key found for agent");
   });
 
   it("fails loudly when the LINEAR_API_KEY is invalid", async () => {
+    process.env.LINEAR_API_KEY = "bad-token";
     mockedLinearGraphQL.mockRejectedValue(new LinearApiError("Unauthorized", "UNAUTHORIZED"));
 
     await expect(checkAuth()).rejects.toThrow("LINEAR_API_KEY is invalid: Unauthorized");

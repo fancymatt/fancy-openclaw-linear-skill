@@ -5,6 +5,7 @@ import path from "node:path";
 import { linearGraphQL } from "./client";
 import { getSelfUser } from "./auth";
 import { ISSUE_FIELDS, STATE_BLOCK, ASSIGNEE_BLOCK, TEAM_BLOCK, DELEGATE_BLOCK } from "./fragments";
+import { captionChunks, chunkCommentBody, DEFAULT_MAX_COMMENT_BYTES } from "./chunk";
 import { CreateIssueInput, Issue, UpdateIssueInput } from "./types";
 
 interface IssueResponse {
@@ -464,7 +465,23 @@ function buildInlineNodes(
   return nodes;
 }
 
-export async function addComment(issueId: string, body: string): Promise<{ issueId: string; commentId: string; commentUrl: string | null; commentCreatedAt: string; commentBodyLength: number; body: string; bodyFile?: string }> {
+type AddCommentResult = {
+  issueId: string;
+  commentId: string;
+  commentUrl: string | null;
+  commentCreatedAt: string;
+  commentBodyLength: number;
+  body: string;
+  bodyFile?: string;
+  chunkCount?: number;
+};
+
+type AddCommentOptions = {
+  maxBytes?: number;
+  noSplit?: boolean;
+};
+
+export async function addComment(issueId: string, body: string, options: AddCommentOptions = {}): Promise<AddCommentResult> {
 
   let finalBody = body.replace(/\\n/g, "\n");
   let tempFilePath: string | undefined;
@@ -473,6 +490,50 @@ export async function addComment(issueId: string, body: string): Promise<{ issue
     tempFilePath = path.join(os.tmpdir(), `linear-comment-${issueId}-${Date.now()}.md`);
     await fs.writeFile(tempFilePath, body, "utf8");
     finalBody = await fs.readFile(tempFilePath, "utf8");
+  }
+
+  const maxBytes = options.maxBytes ?? DEFAULT_MAX_COMMENT_BYTES;
+  if (!options.noSplit && Buffer.byteLength(finalBody, "utf8") > maxBytes) {
+    const chunks = captionChunks(chunkCommentBody(finalBody, maxBytes));
+    let first: AddCommentResult | undefined;
+
+    for (const chunk of chunks) {
+      const rewrittenChunk = await rewriteWithWorkspaceLinks(chunk);
+      const data = await linearGraphQL<CommentCreateResponse>(
+        `
+          mutation AddComment($issueId: String!, $body: String!) {
+            commentCreate(input: { issueId: $issueId, body: $body }) {
+              success
+              comment {
+                id
+                body
+                createdAt
+                url
+              }
+            }
+          }
+        `,
+        { issueId, body: rewrittenChunk }
+      );
+
+      if (!data.commentCreate.success || !data.commentCreate.comment) {
+        throw new Error(`Failed to create comment for issue ${issueId}.`);
+      }
+
+      const result: AddCommentResult = {
+        issueId,
+        commentId: data.commentCreate.comment.id,
+        commentUrl: data.commentCreate.comment.url,
+        commentCreatedAt: data.commentCreate.comment.createdAt,
+        commentBodyLength: Buffer.byteLength(rewrittenChunk, "utf8"),
+        body: data.commentCreate.comment.body,
+        bodyFile: tempFilePath,
+        chunkCount: chunks.length
+      };
+      first ??= result;
+    }
+
+    return first!;
   }
 
   // Strategy 1: try Prosemirror bodyData with native issueMention nodes
