@@ -1,15 +1,19 @@
+import path from "node:path";
 import { spawn } from "child_process";
+
+const repoRoot = path.resolve(__dirname, "../..");
 
 function run(args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
-    const child = spawn("node", ["dist/index.js", ...args], {
-      cwd: "/home/fancymatt/Code/fancy-openclaw-linear-skill",
+    const child = spawn(process.execPath, ["dist/index.js", ...args], {
+      cwd: repoRoot,
       env: { ...process.env, LINEAR_API_KEY: "test-key" },
     });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.on("data", (d) => (stderr += d));
+    child.on("error", (error) => resolve({ stdout, stderr: String(error), code: 1 }));
     child.on("close", (code) => resolve({ stdout, stderr, code: code ?? 1 }));
   });
 }
