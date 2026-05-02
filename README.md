@@ -143,6 +143,29 @@ You should see your Linear user name and email printed. If not, see `references/
 | `linear label <id> <labelName...> [--team <team>]` | Add label(s) to an issue. Case-insensitive. Appends to existing labels. |
 | `linear unlabel <id> <labelName...> [--team <team>]` | Remove label(s) from an issue. Case-insensitive. |
 
+
+### Inline Comment Safety — use `--comment-file` for Markdown/code
+
+Never pass comment bodies containing backticks, code spans, file paths in backticks, fenced code, or non-trivial Markdown via inline `--comment`. Inline comments are parsed by the shell before `linear` receives them, so backticks can be treated as command substitution and silently stripped.
+
+Repro:
+
+```bash
+$ echo "removed `personal/expense-tally.md` from the vault"
+removed  from the vault
+```
+
+Rule: if a Linear comment contains backticks, code, paths, Markdown formatting, multiple paragraphs, or anything you would be sad to see corrupted, write it to a temp file and use `--comment-file <path>`. This applies to `note`, `refuse-work`, `needs-human`, `handoff-work`, and `complete`.
+
+Safe pattern:
+
+```bash
+cat > /tmp/linear-comment.md <<'EOF'
+Removed `personal/expense-tally.md` from the vault.
+EOF
+linear handoff-work AI-123 "Charles (CTO)" --comment-file /tmp/linear-comment.md
+```
+
 ### Comment Verification
 
 **Never read-after-write to verify a comment.** The mutation result is the strongly-consistent source of truth. Trust the `commentId` and `commentUrl` printed on success. If you genuinely need to confirm propagation (rare), use `linear verify-comment <commentId>` — it uses the strongly-consistent node query, not the eventually-consistent connection feed. The `linear comments` / `observe-issue` connection feed can lag by seconds to minutes.

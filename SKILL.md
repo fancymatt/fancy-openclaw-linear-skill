@@ -57,6 +57,29 @@ linear note <ID> --comment "<msg>"    # Post comment only: no state, delegate, o
 
 > **Note:** camelCase aliases (`considerWork`, `beginWork`, etc.) still work for backward compatibility but kebab-case is the standard.
 
+
+### Inline Comment Safety — use `--comment-file` for Markdown/code
+
+Never pass comment bodies containing backticks, code spans, file paths in backticks, fenced code, or non-trivial Markdown via inline `--comment`. Inline comments are parsed by the shell before `linear` receives them, so backticks can be treated as command substitution and silently stripped.
+
+Repro:
+
+```bash
+$ echo "removed `personal/expense-tally.md` from the vault"
+removed  from the vault
+```
+
+Rule: if a Linear comment contains backticks, code, paths, Markdown formatting, multiple paragraphs, or anything you would be sad to see corrupted, write it to a temp file and use `--comment-file <path>`. This applies to `note`, `refuse-work`, `needs-human`, `handoff-work`, and `complete`.
+
+Safe pattern:
+
+```bash
+cat > /tmp/linear-comment.md <<'EOF'
+Removed `personal/expense-tally.md` from the vault.
+EOF
+linear handoff-work AI-123 "Charles (CTO)" --comment-file /tmp/linear-comment.md
+```
+
 #### Comment Options
 
 All write commands accept `--comment "<msg>"` or `--comment-file <path>` for comments. `refuse-work`, `handoff-work`, and `needs-human` require a comment. `consider-work` and `begin-work` do not accept comments — agents should not comment without a handoff.
