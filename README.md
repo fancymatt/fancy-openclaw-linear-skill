@@ -189,6 +189,8 @@ These commands still work when invoked directly but are hidden from `linear --he
 
 | Command | Description |
 |---|---|
+| `linear parent <id> <parentId>` | Set an existing issue as a child of another issue |
+| `linear unparent <id>` | Remove an issue from its parent |
 | `linear subtask <team> <title> --parent <id>` | Create a subtask under a parent issue |
 | `linear children <id>` | View child issues |
 | `linear block <id> --blocked-by <issueId>` | Create a blocking relation |
