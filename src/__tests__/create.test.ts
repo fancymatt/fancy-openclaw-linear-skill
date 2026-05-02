@@ -1,5 +1,6 @@
 import { linearGraphQL } from "../client";
-import { resolveUserRef, resolveUserWithHints } from "../issues";
+import { createIssue, resolveUserRef, resolveUserWithHints } from "../issues";
+import { normalizeCliDescription } from "../utils";
 
 jest.mock("../client", () => ({
   ...jest.requireActual("../client"),
@@ -94,5 +95,58 @@ describe("resolveUserWithHints (UUID passthrough)", () => {
   it("throws with hints when name not found", async () => {
     mockedGraphQL.mockResolvedValue({ users: { nodes: [] } });
     await expect(resolveUserWithHints("nobody")).rejects.toThrow("Could not uniquely resolve");
+  });
+});
+
+describe("create description/delegate handling", () => {
+  beforeEach(() => mockedGraphQL.mockReset());
+
+  it("normalizes literal escaped newlines in CLI descriptions", () => {
+    expect(normalizeCliDescription("# Heading\\n\\nBody\\r\\nNext")).toBe("# Heading\n\nBody\nNext");
+  });
+
+  it("sends create-time delegateId as the resolved ID string", async () => {
+    mockedGraphQL
+      .mockResolvedValueOnce({ issueCreate: { success: true, issue: { id: "00000000-0000-4000-8000-000000000001", identifier: "AI-999", title: "Test" } } })
+      .mockResolvedValueOnce({
+        issue: {
+          id: "00000000-0000-4000-8000-000000000001",
+          identifier: "AI-999",
+          title: "Test",
+          description: "# Heading\n\nBody",
+          url: "https://linear.app/fancymatt/issue/AI-999/test",
+          createdAt: "2026-05-02T00:00:00Z",
+          updatedAt: "2026-05-02T00:00:00Z",
+          priority: 2,
+          state: { id: "state-1", name: "Todo", type: "unstarted" },
+          assignee: null,
+          team: { id: "team-1", key: "AI", name: "AI" },
+          delegate: { id: "user-charles", name: "Charles (CTO)" },
+          project: null,
+          projectMilestone: null,
+          labels: { nodes: [] },
+          relations: { nodes: [] },
+          comments: { nodes: [] },
+          children: { nodes: [] }
+        }
+      });
+
+    await createIssue({
+      teamId: "team-1",
+      title: "Test",
+      description: "# Heading\n\nBody",
+      delegateId: "user-charles"
+    });
+
+    expect(mockedGraphQL).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("issueCreate"),
+      expect.objectContaining({
+        input: expect.objectContaining({
+          delegateId: "user-charles",
+          description: "# Heading\n\nBody"
+        })
+      })
+    );
   });
 });

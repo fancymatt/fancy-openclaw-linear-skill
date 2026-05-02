@@ -50,3 +50,15 @@ export function wrapText(text: string, width: number = 72): string {
     })
     .join("\n");
 }
+
+/**
+ * Normalize issue descriptions passed through CLI flags.
+ *
+ * Shells do not turn "\\n" inside normal quoted arguments into real newlines,
+ * which can collapse Markdown descriptions into a single heading in Linear.
+ * Convert common escaped newline sequences here so `--description` remains safe,
+ * while `--description-file` can preserve Markdown exactly.
+ */
+export function normalizeCliDescription(description: string): string {
+  return description.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
+}
