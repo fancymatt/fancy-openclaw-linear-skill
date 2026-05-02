@@ -60,7 +60,32 @@ async function resolveComment(
     const content = await fs.readFile(commentFile, "utf8");
     return content.trim() || undefined;
   }
-  return comment?.trim() || undefined;
+  const body = comment?.trim() || undefined;
+  if (body) {
+    warnInlineCommentSafety(body);
+  }
+  return body;
+}
+
+export function getInlineCommentSafetyWarning(body: string): string | null {
+  const suspiciousShellCorruption = /\S {2,}\S/.test(body) || /(?:removed|updated|added|deleted|moved|renamed|linked|unlinked)\s{2,}(?:from|to|in|on|with|and|but|because|$)/i.test(body);
+  const markdownOrCode = /`|```|\[[^\]]+\]\([^)]+\)|^\s{0,3}[-*]\s|^\s{0,3}\d+\.\s|#{1,6}\s|\*\*[^*]+\*\*/m.test(body);
+
+  if (!suspiciousShellCorruption && !markdownOrCode) {
+    return null;
+  }
+
+  const reason = suspiciousShellCorruption
+    ? "looks like shell command-substitution may have stripped content"
+    : "contains Markdown/code-like syntax";
+  return `Warning: inline --comment ${reason}. Shell parses inline comments before linear receives them; use --comment-file for bodies with backticks, code, paths, or Markdown.`;
+}
+
+function warnInlineCommentSafety(body: string): void {
+  const warning = getInlineCommentSafetyWarning(body);
+  if (warning) {
+    process.stderr.write(`${warning}\n`);
+  }
 }
 
 function requireComment(

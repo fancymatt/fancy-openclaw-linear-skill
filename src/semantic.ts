@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 
 import {
   executeTransition,
+  getInlineCommentSafetyWarning,
   type TransitionArgs,
   type TransitionResult,
 } from "./state-machine";
@@ -280,6 +281,11 @@ export async function note(
   let body = options.comment?.trim();
   if (options.commentFile) {
     body = (await fs.readFile(options.commentFile, "utf8")).trim();
+  } else if (body) {
+    const warning = getInlineCommentSafetyWarning(body);
+    if (warning) {
+      process.stderr.write(`${warning}\n`);
+    }
   }
   if (!body) {
     throw new Error("note requires a non-empty comment. Use --comment or --comment-file.");

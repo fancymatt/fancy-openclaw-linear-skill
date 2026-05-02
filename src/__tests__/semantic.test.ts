@@ -472,3 +472,21 @@ describe("historyToTimelineEvents", () => {
     expect(historyToTimelineEvents(history)).toEqual([]);
   });
 });
+
+describe("inline comment safety warnings", () => {
+  it("warns when an inline comment looks stripped by shell command substitution", async () => {
+    const spy = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    await handoffWork("AI-100", "Charles (CTO)", { comment: "removed  from the vault" });
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("looks like shell command-substitution"));
+    spy.mockRestore();
+  });
+
+  it("does not warn for comment-file bodies", async () => {
+    const spy = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const readSpy = jest.spyOn(fs, "readFile").mockResolvedValue("removed `personal/expense-tally.md` from the vault");
+    await handoffWork("AI-100", "Charles (CTO)", { commentFile: "/tmp/comment.md" });
+    expect(spy).not.toHaveBeenCalled();
+    readSpy.mockRestore();
+    spy.mockRestore();
+  });
+});
