@@ -1,6 +1,6 @@
 import { linearGraphQL } from "../client";
-import { getIssue } from "../issues";
-import { listRelations, createBlockingRelation, removeBlockingRelation } from "../relations";
+import { getIssue, updateIssue } from "../issues";
+import { listRelations, createBlockingRelation, removeBlockingRelation, removeParentIssue, setParentIssue } from "../relations";
 
 jest.mock("../client", () => ({
   ...jest.requireActual("../client"),
@@ -8,11 +8,13 @@ jest.mock("../client", () => ({
 }));
 
 jest.mock("../issues", () => ({
-  getIssue: jest.fn()
+  getIssue: jest.fn(),
+  updateIssue: jest.fn()
 }));
 
 const mockedGraphQL = linearGraphQL as jest.MockedFunction<typeof linearGraphQL>;
 const mockGetIssue = getIssue as jest.MockedFunction<typeof getIssue>;
+const mockUpdateIssue = updateIssue as jest.MockedFunction<typeof updateIssue>;
 
 describe("listRelations", () => {
   beforeEach(() => mockGetIssue.mockReset());
@@ -109,5 +111,60 @@ describe("removeBlockingRelation", () => {
     } as any);
     mockedGraphQL.mockResolvedValue({ issueRelationDelete: { success: false } });
     await expect(removeBlockingRelation("AI-100", "AI-200")).rejects.toThrow("Failed to delete relation");
+  });
+});
+
+
+describe("parent relationships", () => {
+  beforeEach(() => {
+    mockGetIssue.mockReset();
+    mockUpdateIssue.mockReset();
+  });
+
+  it("sets parent by resolving both issue identifiers to Linear ids", async () => {
+    mockGetIssue.mockImplementation(async (id: string) => ({
+      id: id === "AI-100" ? "uuid-100" : "uuid-200",
+      identifier: id,
+      title: id,
+      parent: null
+    } as any));
+    mockUpdateIssue.mockResolvedValue({
+      id: "uuid-100",
+      identifier: "AI-100",
+      title: "Child",
+      parent: { id: "uuid-200", identifier: "AI-200", title: "Parent" }
+    } as any);
+
+    const result = await setParentIssue("AI-100", "AI-200");
+
+    expect(mockUpdateIssue).toHaveBeenCalledWith("uuid-100", { parentId: "uuid-200" });
+    expect(result).toMatchObject({ issueId: "AI-100", parentId: "AI-200" });
+  });
+
+  it("rejects self-parenting", async () => {
+    mockGetIssue.mockResolvedValue({ id: "uuid-100", identifier: "AI-100", title: "Same" } as any);
+
+    await expect(setParentIssue("AI-100", "AI-100")).rejects.toThrow("own parent");
+    expect(mockUpdateIssue).not.toHaveBeenCalled();
+  });
+
+  it("removes parent relationship", async () => {
+    mockGetIssue.mockResolvedValue({
+      id: "uuid-100",
+      identifier: "AI-100",
+      title: "Child",
+      parent: { id: "uuid-200", identifier: "AI-200", title: "Parent" }
+    } as any);
+    mockUpdateIssue.mockResolvedValue({
+      id: "uuid-100",
+      identifier: "AI-100",
+      title: "Child",
+      parent: null
+    } as any);
+
+    const result = await removeParentIssue("AI-100");
+
+    expect(mockUpdateIssue).toHaveBeenCalledWith("uuid-100", { parentId: null });
+    expect(result).toMatchObject({ issueId: "AI-100", previousParent: "AI-200" });
   });
 });

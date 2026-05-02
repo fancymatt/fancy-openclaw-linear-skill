@@ -138,6 +138,8 @@ linear my-issues --new               # New/unviewed issues
 linear board <TEAM>                  # Team board view
 linear review-queue                  # Items in review state
 linear stalled <days>                # Stale tickets
+linear parent <ID> <PARENT_ID>       # Set an existing issue as a child/sub-issue
+linear unparent <ID>                 # Remove an issue from its parent
 linear children <ID>                 # View sub-issues
 linear relations <ID>                # View related issues
 linear block <ID> --blocked-by <ID>  # Mark as blocking
