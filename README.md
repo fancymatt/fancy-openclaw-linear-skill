@@ -124,7 +124,7 @@ You should see your Linear user name and email printed. If not, see `references/
 | Command | Description |
 |---|---|
 | `linear issue <id>` | View issue details |
-| `linear create <team> <title> [--description <desc>] [--project <id>] [--milestone <id>] [--assignee <id>] [--priority <n>] [--parent <id>]` | Create a new issue |
+| `linear create <team> <title> [--description <desc> | --description-file <path>] [--project <id>] [--milestone <id>] [--assignee <id>] [--delegate <id>] [--priority <n>] [--parent <id>] [--dry-run]` | Create a new issue. Prefer `--description-file` for Markdown/multiline descriptions; literal `\n` in `--description` is normalized to real newlines with a warning. `--dry-run` prints the resolved create payload without writing. |
 | `linear edit <id> --title <title> --description <desc>` | Edit issue title and/or description |
 | `linear delete <id>` | Delete an issue |
 | `linear search <query> [--team <team>] [--limit <n>]` | Search issues by text |

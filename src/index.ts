@@ -18,7 +18,7 @@ import { listLabels, addLabels, removeLabels } from "./labels";
 import { searchIssues } from "./search";
 import { linearTest } from "./test";
 import { linearGraphQL, LinearApiError } from "./client";
-import { relativeTime, wrapText } from "./utils";
+import { normalizeCliDescription, relativeTime, wrapText } from "./utils";
 import { ObserveResult } from "./semantic";
 import { setDebugMode, isDebugMode } from "./debug";
 import { CreateIssueInput, UpdateIssueInput } from "./types";
@@ -330,34 +330,55 @@ async function main(): Promise<void> {
     .argument("<team>")
     .argument("<title>")
     .option("--description <description>")
+    .option("--description-file <path>", "Read Markdown/multiline description from file")
     .option("--project <name|id>", "Project name or ID")
     .option("--milestone <milestoneId>")
     .option("--assignee <name|uuid>")
     .option("--delegate <name|uuid>")
     .option("--priority <priority>")
     .option("--parent <parentId>")
-    .action(async (team: string, title: string, options: Record<string, string | undefined>) => {
+    .option("--dry-run", "Resolve inputs and print the create payload without creating an issue")
+    .action(async (team: string, title: string, options: Record<string, string | boolean | undefined>) => {
       await runCommand(async () => {
         const teamId = await resolveTeamId(team);
-        const assigneeId = options.assignee ? await resolveUserWithHints(options.assignee, "create") : undefined;
-        const delegateId = options.delegate ? await resolveUserWithHints(options.delegate, "create") : undefined;
-        let projectId = options.project;
+        const assigneeName = typeof options.assignee === "string" ? options.assignee : undefined;
+        const delegateName = typeof options.delegate === "string" ? options.delegate : undefined;
+        const assignee = assigneeName ? await resolveUserWithHints(assigneeName, "create") : undefined;
+        const delegate = delegateName ? await resolveUserWithHints(delegateName, "create") : undefined;
+        let description = typeof options.description === "string" ? options.description : undefined;
+        const descriptionFile = typeof options.descriptionFile === "string" ? options.descriptionFile : undefined;
+        if (descriptionFile) {
+          if (description) {
+            throw new Error("Use either --description or --description-file, not both.");
+          }
+          description = await fs.readFile(descriptionFile, "utf8");
+        } else if (description) {
+          const normalized = normalizeCliDescription(description);
+          if (normalized !== description) {
+            process.stderr.write("Warning: converted literal \\n sequences in --description to real newlines. Prefer --description-file for Markdown/multiline descriptions.\n");
+          }
+          description = normalized;
+        }
+        let projectId = typeof options.project === "string" ? options.project : undefined;
         if (projectId && !projectId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
           const project = await findProjectByName(projectId);
           projectId = project.id;
         }
         const input: CreateIssueInput = {
           title,
-          description: options.description,
+          description,
           projectId,
-          projectMilestoneId: options.milestone,
-          assigneeId,
-          delegateId,
-          priority: parseOptionalNumber(options.priority),
-          parentId: options.parent
+          projectMilestoneId: typeof options.milestone === "string" ? options.milestone : undefined,
+          assigneeId: assignee?.id,
+          delegateId: delegate?.id,
+          priority: parseOptionalNumber(typeof options.priority === "string" ? options.priority : undefined),
+          parentId: typeof options.parent === "string" ? options.parent : undefined
         } as CreateIssueInput;
         if (teamId) {
           input.teamId = teamId;
+        }
+        if (options.dryRun) {
+          return input;
         }
         return createIssue(input);
       }, program.opts<{ human?: boolean }>().human);
