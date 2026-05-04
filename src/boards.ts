@@ -68,6 +68,43 @@ export async function getBoard(teamId: string): Promise<Record<string, Issue[]>>
   }, {});
 }
 
+export async function getRecentlyDone(teamId: string, days = 2): Promise<Issue[]> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const data = await linearGraphQL<TeamIssuesResponse>(
+    `
+      query TeamRecentlyDone($teamId: String!, $since: DateTimeOrDuration!) {
+        team(id: $teamId) {
+          issues(
+            first: 100,
+            filter: {
+              state: { type: { in: ["completed", "canceled"] } },
+              completedAt: { gte: $since }
+            },
+            orderBy: updatedAt
+          ) {
+            nodes {
+              id
+              identifier
+              title
+              updatedAt
+              priority
+              ${STATE_BLOCK}
+              ${ASSIGNEE_BLOCK}
+            }
+          }
+        }
+      }
+    `,
+    { teamId, since }
+  );
+
+  if (!data.team) {
+    throw new Error(`Team not found: ${teamId}`);
+  }
+
+  return data.team.issues.nodes;
+}
+
 export async function getReviewQueue(): Promise<Issue[]> {
   const data = await linearGraphQL<ViewerIssuesResponse>(`
     query ReviewQueue {

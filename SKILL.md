@@ -135,7 +135,9 @@ linear queue --blocked               # Blocked issues only
 linear my-issues                     # All issues assigned or delegated to you
 linear my-issues --status "To Do"    # Filter by status
 linear my-issues --new               # New/unviewed issues
-linear board <TEAM>                  # Team board view
+linear board <TEAM>                  # Team board view (active states only — excludes Done/Canceled)
+linear recently-done <TEAM>          # Recently completed/canceled tickets in a team (default 2-day window)
+linear recently-done <TEAM> --days 7 # Custom lookback window
 linear review-queue                  # Items in review state
 linear stalled <days>                # Stale tickets
 linear parent <ID> <PARENT_ID>       # Set an existing issue as a child/sub-issue

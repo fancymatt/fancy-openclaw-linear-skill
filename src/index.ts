@@ -5,7 +5,7 @@ import { Command } from "commander";
 
 import { checkAuth, linearDoctor } from "./auth";
 import { getMyBlocked } from "./blocked";
-import { getBoard, getReviewQueue, getStalled } from "./boards";
+import { getBoard, getRecentlyDone, getReviewQueue, getStalled } from "./boards";
 import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue, note } from "./semantic";
 import { addComment, createIssue, findUserByName, resolveUserWithHints, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue, verifyComment } from "./issues";
 import { attachIssueToMilestone, attachIssueToProject, createMilestone, findProjectByName, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
@@ -515,6 +515,17 @@ async function main(): Promise<void> {
       return getBoard(teamId);
     }, program.opts<{ human?: boolean }>().human);
   });
+  program.command("recently-done")
+    .argument("<team>")
+    .option("--days <n>", "Lookback window in days", "2")
+    .description("Recently completed/canceled tickets in a team")
+    .action(async (team: string, options: { days?: string }) => {
+      await runCommand(async () => {
+        const teamId = await resolveTeamId(team);
+        const days = options.days ? Number(options.days) : 2;
+        return getRecentlyDone(teamId, days);
+      }, program.opts<{ human?: boolean }>().human);
+    });
   program.command("review-queue").action(async () => {
     await runCommand(async () => getReviewQueue(), program.opts<{ human?: boolean }>().human);
   });
