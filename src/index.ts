@@ -713,7 +713,7 @@ async function main(): Promise<void> {
 
   // --- Semantic commands (kebab-case primary, camelCase aliases for compat) ---
 
-  program.command("note").argument("<id>").requiredOption("--comment <msg>", `Comment body. ${INLINE_COMMENT_HELP}`).option("--comment-file <path>", "Read comment from file").description("Post a comment on an issue without changing state, delegate, or assignee").action(async (id: string, options: { comment?: string; commentFile?: string }) => {
+  program.command("note").argument("<id>").option("--comment <msg>", `Comment body. ${INLINE_COMMENT_HELP}`).option("--comment-file <path>", "Read comment from file").description("Post a comment on an issue without changing state, delegate, or assignee").action(async (id: string, options: { comment?: string; commentFile?: string }) => {
     await runCommand(async () => note(id, options), program.opts<{ human?: boolean }>().human);
   });
 
