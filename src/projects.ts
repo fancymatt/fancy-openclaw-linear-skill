@@ -15,17 +15,22 @@ interface ProjectByNameResponse {
   };
 }
 
-interface MilestonesResponse {
+interface TeamProjectsResponse {
   team: {
     id: string;
     projects: {
       nodes: Array<{
         id: string;
         name: string;
-        milestones: {
-          nodes: ProjectMilestone[];
-        };
       }>;
+    };
+  } | null;
+}
+
+interface ProjectMilestonesResponse {
+  project: {
+    projectMilestones: {
+      nodes: ProjectMilestone[];
     };
   } | null;
 }
@@ -141,24 +146,42 @@ export async function getProjectIssues(projectName: string): Promise<Issue[]> {
   return project.issues.nodes;
 }
 
-export async function listMilestones(teamId: string): Promise<Array<ProjectMilestone & { projectName: string }>> {
-  const data = await linearGraphQL<MilestonesResponse>(
+async function getProjectMilestones(projectId: string): Promise<ProjectMilestone[]> {
+  const data = await linearGraphQL<ProjectMilestonesResponse>(
     `
-      query TeamMilestones($teamId: String!) {
-        team(id: $teamId) {
-          id
-          projects(first: 100) {
+      query ProjectMilestones($projectId: String!) {
+        project(id: $projectId) {
+          projectMilestones {
             nodes {
               id
               name
-              projectMilestones(first: 100) {
-                nodes {
-                  id
-                  name
-                  description
-                  targetDate
-                }
-              }
+              description
+              targetDate
+            }
+          }
+        }
+      }
+    `,
+    { projectId }
+  );
+
+  if (!data.project) {
+    return [];
+  }
+
+  return data.project.projectMilestones.nodes;
+}
+
+export async function listMilestones(teamId: string): Promise<Array<ProjectMilestone & { projectName: string }>> {
+  const teamData = await linearGraphQL<TeamProjectsResponse>(
+    `
+      query TeamProjects($teamId: String!) {
+        team(id: $teamId) {
+          id
+          projects(first: 50) {
+            nodes {
+              id
+              name
             }
           }
         }
@@ -167,13 +190,19 @@ export async function listMilestones(teamId: string): Promise<Array<ProjectMiles
     { teamId }
   );
 
-  if (!data.team) {
+  if (!teamData.team) {
     throw new Error(`Team not found: ${teamId}`);
   }
 
-  return data.team.projects.nodes.flatMap((project) =>
-    project.milestones.nodes.map((milestone) => ({ ...milestone, projectName: project.name }))
-  );
+  const results: Array<ProjectMilestone & { projectName: string }> = [];
+  for (const project of teamData.team.projects.nodes) {
+    const milestones = await getProjectMilestones(project.id);
+    for (const milestone of milestones) {
+      results.push({ ...milestone, projectName: project.name });
+    }
+  }
+
+  return results;
 }
 
 export async function createMilestone(projectName: string, name: string, targetDate: string): Promise<ProjectMilestone> {
@@ -210,12 +239,12 @@ export async function createMilestone(projectName: string, name: string, targetD
 
 export async function attachIssueToMilestone(issueId: string, milestoneName: string): Promise<Issue> {
   const issue = await getIssue(issueId);
-  const teamId = issue.team?.id;
-  if (!teamId) {
-    throw new Error(`Issue ${issueId} has no team.`);
+  const projectId = issue.project?.id;
+  if (!projectId) {
+    throw new Error(`Issue ${issueId} is not attached to a project. Use project-attach first.`);
   }
 
-  const milestones = await listMilestones(teamId);
+  const milestones = await getProjectMilestones(projectId);
   const milestone = milestones.find((candidate) => candidate.name.toLowerCase() === milestoneName.toLowerCase());
   if (!milestone) {
     throw new Error(`Milestone not found: ${milestoneName}`);
