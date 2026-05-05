@@ -61,7 +61,7 @@ export interface Project {
   progress?: number | null;
   targetDate?: string | null;
   startDate?: string | null;
-  milestones?: ProjectMilestone[];
+  projectMilestones?: ProjectMilestone[];
 }
 
 export interface Issue {
