@@ -35,13 +35,21 @@ interface ProjectMilestonesResponse {
   } | null;
 }
 
+interface ProjectIssueNode {
+  id: string;
+  identifier: string;
+  title: string;
+  updatedAt?: string | null;
+  priority?: number | null;
+  state?: { id: string; name: string; type?: string | null } | null;
+  assignee?: { id: string; name: string; email?: string | null } | null;
+  team?: { id: string; key?: string; name?: string } | null;
+  projectMilestone?: ProjectMilestone | null;
+}
+
 interface ProjectIssuesResponse {
-  projects: {
-    nodes: Array<{
-      issues: {
-        nodes: Issue[];
-      };
-    }>;
+  issues: {
+    nodes: ProjectIssueNode[];
   };
 }
 
@@ -117,19 +125,21 @@ export async function getProjectIssues(projectName: string): Promise<Issue[]> {
   const data = await linearGraphQL<ProjectIssuesResponse>(
     `
       query ProjectIssues($name: String!) {
-        projects(first: 20, filter: { name: { containsIgnoreCase: $name } }) {
+        issues(first: 100, filter: { project: { name: { containsIgnoreCase: $name } } }) {
           nodes {
-            issues(first: 100) {
-              nodes {
-                id
-                identifier
-                title
-                updatedAt
-                priority
-                ${STATE_BLOCK}
-                ${ASSIGNEE_BLOCK}
-                ${TEAM_BLOCK}
-              }
+            id
+            identifier
+            title
+            updatedAt
+            priority
+            ${STATE_BLOCK}
+            ${ASSIGNEE_BLOCK}
+            ${TEAM_BLOCK}
+            projectMilestone {
+              id
+              name
+              description
+              targetDate
             }
           }
         }
@@ -138,12 +148,10 @@ export async function getProjectIssues(projectName: string): Promise<Issue[]> {
     { name: projectName }
   );
 
-  const project = data.projects.nodes.find((candidate) => candidate.issues);
-  if (!project) {
-    throw new Error(`Project not found: ${projectName}`);
-  }
-
-  return project.issues.nodes;
+  return data.issues.nodes.map((node) => ({
+    ...node,
+    milestone: node.projectMilestone ?? null
+  }));
 }
 
 async function getProjectMilestones(projectId: string): Promise<ProjectMilestone[]> {

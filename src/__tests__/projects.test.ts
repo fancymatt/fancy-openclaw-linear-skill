@@ -78,21 +78,30 @@ describe("getProjectIssues", () => {
 
   it("returns issues for a project", async () => {
     mockedGraphQL.mockResolvedValue({
-      projects: {
-        nodes: [{
-          issues: {
-            nodes: [{ id: "i-1", identifier: "AI-100", title: "Test" }]
-          }
-        }]
+      issues: {
+        nodes: [{ id: "i-1", identifier: "AI-100", title: "Test", projectMilestone: null }]
       }
     });
     const issues = await getProjectIssues("Test");
     expect(issues).toHaveLength(1);
+    expect(issues[0].identifier).toBe("AI-100");
   });
 
-  it("throws when project not found", async () => {
-    mockedGraphQL.mockResolvedValue({ projects: { nodes: [] } });
-    await expect(getProjectIssues("Nonexistent")).rejects.toThrow("Project not found");
+  it("maps projectMilestone to milestone", async () => {
+    const milestone = { id: "m-1", name: "v1.1", description: null, targetDate: null };
+    mockedGraphQL.mockResolvedValue({
+      issues: {
+        nodes: [{ id: "i-1", identifier: "AI-100", title: "Test", projectMilestone: milestone }]
+      }
+    });
+    const issues = await getProjectIssues("Test");
+    expect(issues[0].milestone).toEqual(milestone);
+  });
+
+  it("returns empty array when no issues match", async () => {
+    mockedGraphQL.mockResolvedValue({ issues: { nodes: [] } });
+    const issues = await getProjectIssues("Nonexistent");
+    expect(issues).toHaveLength(0);
   });
 });
 
