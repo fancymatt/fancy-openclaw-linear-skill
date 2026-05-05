@@ -114,22 +114,20 @@ describe("listMilestones", () => {
   beforeEach(() => mockedGraphQL.mockReset());
 
   it("returns milestones with project names", async () => {
-    mockedGraphQL.mockResolvedValue({
-      team: {
-        id: "team-1",
-        projects: {
-          nodes: [{
-            id: "p-1",
-            name: "Project A",
-            milestones: {
-              nodes: [
-                { id: "m-1", name: "Sprint 1", description: "First sprint", targetDate: "2026-02-01" }
-              ]
-            }
-          }]
+    mockedGraphQL
+      .mockResolvedValueOnce({
+        team: {
+          id: "team-1",
+          projects: { nodes: [{ id: "p-1", name: "Project A" }] }
         }
-      }
-    });
+      })
+      .mockResolvedValueOnce({
+        project: {
+          projectMilestones: {
+            nodes: [{ id: "m-1", name: "Sprint 1", description: "First sprint", targetDate: "2026-02-01" }]
+          }
+        }
+      });
     const milestones = await listMilestones("team-1");
     expect(milestones).toHaveLength(1);
     expect(milestones[0].name).toBe("Sprint 1");
@@ -171,20 +169,15 @@ describe("attachIssueToMilestone", () => {
     mockedGraphQL.mockReset();
     mockGetIssue.mockReset();
     mockUpdateIssue.mockReset();
-    mockGetIssue.mockResolvedValue({ team: { id: "team-1" } } as any);
+    mockGetIssue.mockResolvedValue({ project: { id: "proj-1", name: "Proj" } } as any);
     mockUpdateIssue.mockResolvedValue({} as any);
   });
 
   it("finds milestone and updates issue", async () => {
     mockedGraphQL.mockResolvedValue({
-      team: {
-        id: "team-1",
-        projects: {
-          nodes: [{
-            id: "p-1",
-            name: "Proj",
-            milestones: { nodes: [{ id: "m-1", name: "Sprint 1", description: null, targetDate: "2026-02-01" }] }
-          }]
+      project: {
+        projectMilestones: {
+          nodes: [{ id: "m-1", name: "Sprint 1", description: null, targetDate: "2026-02-01" }]
         }
       }
     });
@@ -194,13 +187,13 @@ describe("attachIssueToMilestone", () => {
 
   it("throws when milestone not found", async () => {
     mockedGraphQL.mockResolvedValue({
-      team: { id: "team-1", projects: { nodes: [{ id: "p-1", name: "Proj", milestones: { nodes: [] } }] } }
+      project: { projectMilestones: { nodes: [] } }
     });
     await expect(attachIssueToMilestone("issue-1", "Nonexistent")).rejects.toThrow("Milestone not found");
   });
 
-  it("throws when issue has no team", async () => {
-    mockGetIssue.mockResolvedValue({ team: null } as any);
-    await expect(attachIssueToMilestone("issue-1", "Sprint 1")).rejects.toThrow("no team");
+  it("throws when issue has no project", async () => {
+    mockGetIssue.mockResolvedValue({ project: null } as any);
+    await expect(attachIssueToMilestone("issue-1", "Sprint 1")).rejects.toThrow("not attached to a project");
   });
 });
