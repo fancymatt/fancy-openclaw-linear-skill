@@ -64,7 +64,7 @@ describe("uploadFile", () => {
     );
   });
 
-  it("posts comment with asset URL when issueId provided", async () => {
+  it("posts raw URL comment for non-image files when issueId provided", async () => {
     jest.spyOn(fs, "readFile").mockResolvedValueOnce(Buffer.from("data"));
     mockedGraphQL.mockResolvedValue({
       fileUpload: { success: true, uploadFile: { uploadUrl: "https://url", assetUrl: "https://asset/file.md", headers: [] } }
@@ -74,6 +74,41 @@ describe("uploadFile", () => {
     const result = await uploadFile("/path/to/file.md", "AI-100");
     expect(result.issueCommented).toBe(true);
     expect(mockAddComment).toHaveBeenCalledWith("AI-100", "https://asset/file.md");
+  });
+
+  it("posts Prosemirror image node for image files when issueId provided", async () => {
+    jest.spyOn(fs, "readFile").mockResolvedValueOnce(Buffer.from("png-data"));
+    mockedGraphQL
+      .mockResolvedValueOnce({
+        fileUpload: { success: true, uploadFile: { uploadUrl: "https://url", assetUrl: "https://uploads.linear.app/img.png", headers: [] } }
+      })
+      .mockResolvedValueOnce({ commentCreate: { success: true, comment: { id: "comment-uuid" } } });
+
+    const result = await uploadFile("/path/to/img.png", "AI-100");
+    expect(result.issueCommented).toBe(true);
+    expect(mockAddComment).not.toHaveBeenCalled();
+    const bodyDataCall = mockedGraphQL.mock.calls[1];
+    expect(bodyDataCall[0]).toContain("AddImageComment");
+    const rawBodyData = (bodyDataCall[1] as { bodyData: string }).bodyData;
+    const bodyData = JSON.parse(rawBodyData) as { type: string; content: Array<{ type: string; attrs: { src: string; alt: string } }> };
+    expect(bodyData.type).toBe("doc");
+    expect(bodyData.content[0].type).toBe("image");
+    expect(bodyData.content[0].attrs.src).toBe("https://uploads.linear.app/img.png");
+    expect(bodyData.content[0].attrs.alt).toBe("img.png");
+  });
+
+  it("falls back to Markdown image syntax when Prosemirror image comment fails", async () => {
+    jest.spyOn(fs, "readFile").mockResolvedValueOnce(Buffer.from("png-data"));
+    mockedGraphQL
+      .mockResolvedValueOnce({
+        fileUpload: { success: true, uploadFile: { uploadUrl: "https://url", assetUrl: "https://uploads.linear.app/img.png", headers: [] } }
+      })
+      .mockRejectedValueOnce(new Error("API error"));
+    mockAddComment.mockResolvedValue({ issueId: "AI-100", commentId: "c2", commentUrl: null, commentCreatedAt: "2026-04-26T12:00:00Z", commentBodyLength: 40, body: "![img.png](https://uploads.linear.app/img.png)" });
+
+    const result = await uploadFile("/path/to/img.png", "AI-100");
+    expect(result.issueCommented).toBe(true);
+    expect(mockAddComment).toHaveBeenCalledWith("AI-100", "![img.png](https://uploads.linear.app/img.png)");
   });
 
   it("throws when upload initialization fails", async () => {

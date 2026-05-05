@@ -4,6 +4,10 @@ import path from "node:path";
 import { putPresignedFile, linearGraphQL } from "./client";
 import { addComment } from "./issues";
 
+interface ImageCommentCreateResponse {
+  commentCreate: { success: boolean; comment: { id: string } | null };
+}
+
 interface FileUploadResponse {
   fileUpload: {
     success: boolean;
@@ -36,6 +40,36 @@ function detectContentType(filePath: string): string {
     return "application/pdf";
   }
   return "application/octet-stream";
+}
+
+// Posts an image as an embedded Prosemirror image node so it renders inline in
+// Linear rather than as a bare URL. Falls back to Markdown ![alt](url) if the
+// API rejects the bodyData (e.g. schema mismatch).
+async function postImageComment(issueId: string, assetUrl: string, filename: string): Promise<void> {
+  try {
+    const bodyData = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: { src: assetUrl, alt: filename, title: null }
+        }
+      ]
+    };
+    const data = await linearGraphQL<ImageCommentCreateResponse>(
+      `mutation AddImageComment($issueId: String!, $bodyData: JSON!) {
+        commentCreate(input: { issueId: $issueId, bodyData: $bodyData }) {
+          success
+          comment { id }
+        }
+      }`,
+      { issueId, bodyData: JSON.stringify(bodyData) }
+    );
+    if (data.commentCreate.success) return;
+  } catch {
+    // fall through
+  }
+  await addComment(issueId, `![${filename}](${assetUrl})`);
 }
 
 export async function uploadFile(
@@ -81,7 +115,11 @@ export async function uploadFile(
   );
 
   if (issueId) {
-    await addComment(issueId, upload.assetUrl);
+    if (contentType.startsWith("image/")) {
+      await postImageComment(issueId, upload.assetUrl, filename);
+    } else {
+      await addComment(issueId, upload.assetUrl);
+    }
   }
 
   return {
