@@ -51,6 +51,7 @@ linear refuse-work <ID> <agent>       # Decline: status=Todo, delegate to anothe
 linear handoff-work <ID> <agent>      # Hand off: status=Todo, delegate to agent (requires --comment)
 linear complete <ID>                  # Finish: status=Done, clear delegate + assignee (optional --comment)
 linear needs-human <ID> <human>       # Escalate: status=Todo, assignee=human, clear delegate (requires --comment)
+linear park <ID>                      # Deprioritize: status=Backlog, clear delegate + assignee (optional --comment)
 linear note <ID> --comment "<msg>"    # Post comment only: no state, delegate, or assignee change
                                       # Works on any status (including Done/Canceled)
 ```
@@ -95,6 +96,7 @@ All write commands accept `--comment "<msg>"` or `--comment-file <path>` for com
 | You're done and the ticket is complete | `complete <ID>` |
 | You need a human decision/input | `needs-human <ID> <human> --comment "..."` |
 | You're the wrong person for this task | `refuse-work <ID> <agent> --comment "..."` |
+| Intentionally deprioritizing / parking a ticket | `park <ID>` |
 | Browsing tickets without ownership | `observe-issue <ID>` |
 | Adding context to a closed ticket | `note <ID> --comment "..."` |
 
@@ -150,11 +152,47 @@ linear verify-comment <commentId>    # Strongly-consistent comment existence che
 linear project-issues <project>      # List project issues
 linear create <TEAM> "<title>"       # Create issue
 linear create <TEAM> "<title>" --description-file <path>  # Preferred for Markdown/multiline descriptions
+linear create <TEAM> "<title>" --project <name|id>  # Attach to a Linear project
 linear create <TEAM> "<title>" --dry-run  # Print resolved payload without writing
 linear create <TEAM> "<title>" --assignee <name|uuid>  # Assign on create
 linear create <TEAM> "<title>" --delegate <name|uuid>  # Delegate on create
 linear edit <ID> --title/--desc      # Edit title/description
 ```
+
+## Creating Issues in the Right Project
+
+Agents often get this wrong, so treat project selection as part of the create operation — not a cleanup step.
+
+### Required create workflow
+
+1. If the user names a project/workspace/initiative, resolve it first:
+   ```bash
+   linear projects
+   ```
+2. Use the exact project name or, safer, the project UUID from `linear projects`.
+3. Run a dry run before creating when project placement matters:
+   ```bash
+   linear create <TEAM> "<title>" --project <project-id-or-exact-name> --dry-run
+   ```
+4. Confirm the dry-run payload has the intended `teamId`/team key and `projectId`/project name.
+5. Only then create the issue with the same `--project` value.
+
+### When project is ambiguous
+
+- If the user says a project name that matches multiple things or could mean team vs project, ask one clarifying question.
+- If the user says “in the Linear Connector space/project”, search `linear projects` and use the exact Linear Connector project ID/name, not the AI Systems team default.
+- If no project is specified, it is okay to create team-only — but do not invent a project.
+
+### Safer pattern
+
+```bash
+linear projects > /tmp/linear-projects.json
+# choose the exact project id/name from the list
+linear create AI "Title" --project "<project-id>" --description-file /tmp/desc.md --delegate "Charles" --dry-run
+linear create AI "Title" --project "<project-id>" --description-file /tmp/desc.md --delegate "Charles"
+```
+
+Prefer project IDs over names when available; names are easier for humans but IDs avoid ambiguity and stale memory.
 
 ## Team Keys
 - `LIFE` — Matt's Personal Life

@@ -6,7 +6,7 @@ import { Command } from "commander";
 import { checkAuth, linearDoctor } from "./auth";
 import { getMyBlocked } from "./blocked";
 import { getBoard, getRecentlyDone, getReviewQueue, getStalled } from "./boards";
-import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue, note } from "./semantic";
+import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue, note, parkWork } from "./semantic";
 import { addComment, createIssue, findUserByName, resolveUserWithHints, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue, verifyComment } from "./issues";
 import { attachIssueToMilestone, attachIssueToProject, createMilestone, findProjectByName, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
 import { createBlockingRelation, listRelations, removeBlockingRelation, removeParentIssue, setParentIssue } from "./relations";
@@ -184,7 +184,7 @@ async function runCommand(handler: () => Promise<unknown>, human = false): Promi
 }
 
 const DEPRECATION_MSG =
-  "⚠️  This command is deprecated for agent use. Use semantic commands: consider-work, refuse-work, begin-work, handoff-work, complete, needs-human. Pass --silence-deprecation to suppress.";
+  "⚠️  This command is deprecated for agent use. Use semantic commands: consider-work, refuse-work, begin-work, handoff-work, complete, needs-human, park. Pass --silence-deprecation to suppress.";
 
 const INLINE_COMMENT_HELP = "Inline --comment is shell-parsed; use --comment-file for bodies with backticks, code, paths, or Markdown.";
 
@@ -743,6 +743,10 @@ async function main(): Promise<void> {
 
   program.command("needs-human").alias("needsHuman").argument("<id>").argument("<assignee>", "human display name in quotes, e.g. \"Matt Henry\"").option("--comment <msg>", INLINE_COMMENT_HELP).option("--comment-file <path>", "Read comment from file").description("Escalate to human for action").action(async (id: string, assignee: string, options: { comment?: string; commentFile?: string }) => {
     await runCommand(async () => needsHuman(id, assignee, options), program.opts<{ human?: boolean }>().human);
+  });
+
+  program.command("park").alias("parkWork").argument("<id>").option("--comment <msg>", INLINE_COMMENT_HELP).option("--comment-file <path>", "Read comment from file").description("Move ticket to Backlog and clear ownership (intentional deprioritization)").action(async (id: string, options: { comment?: string; commentFile?: string }) => {
+    await runCommand(async () => parkWork(id, options), program.opts<{ human?: boolean }>().human);
   });
 
   // Enhance unknown-option errors with usage hints by intercepting stderr output

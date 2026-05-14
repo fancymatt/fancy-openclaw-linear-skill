@@ -126,6 +126,8 @@ export interface StateTransition {
   includeContext?: boolean;
   /** Do not mutate terminal Linear issues (completed/canceled). Used by stale delegation hooks. */
   noopOnTerminal?: boolean;
+  /** Refuse to take ownership unless the authenticated user is still the current delegate/assignee. */
+  requireSelfAssignedOrDelegated?: boolean;
 }
 
 export interface TransitionArgs {
@@ -213,6 +215,33 @@ export async function executeTransition(
       result.context = await buildObserveContext(issue);
     }
     return result;
+  }
+
+  if (config.requireSelfAssignedOrDelegated) {
+    const self = await getSelfUser();
+    const currentDelegateId = issue.delegate?.id ?? null;
+    const currentAssigneeId = issue.assignee?.id ?? null;
+    const isCurrentOwner = currentDelegateId === self.id || currentAssigneeId === self.id;
+
+    if (!isCurrentOwner) {
+      const result: TransitionResult = {
+        command: commandName,
+        issueId: issue.identifier,
+        state: issue.state?.name ?? "Unknown",
+        delegate: issue.delegate?.name ?? null,
+        assignee: issue.assignee?.name ?? null,
+        commentPosted: false,
+        commentId: null,
+        commentUrl: null,
+        commentCreatedAt: null,
+        commentBodyLength: null,
+        bodyFile: null,
+      };
+      if (config.includeContext) {
+        result.context = await buildObserveContext(issue);
+      }
+      return result;
+    }
   }
 
   // 2. Resolve target state

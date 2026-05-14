@@ -165,6 +165,7 @@ export async function considerWork(
     includeContext: true,
     skipIfSameState: true,
     noopOnTerminal: !options?.force,
+    requireSelfAssignedOrDelegated: !options?.force,
   });
 }
 
@@ -329,5 +330,32 @@ export async function needsHuman(
     clearDelegate: true,
     assigneeName: (args) => args.userName,
     commentFirst: true,
+  });
+}
+
+/**
+ * linear park <id>
+ *
+ * Intentionally deprioritize a ticket — move it to Backlog and clear ownership.
+ * Use when Matt says "let's park this" or an agent reaches end-of-reflection state
+ * with nothing immediately actionable.
+ * - Set status to Backlog
+ * - Clear delegate
+ * - Clear assignee
+ * - Post comment (optional)
+ */
+export async function parkWork(
+  issueId: string,
+  options?: { comment?: string; commentFile?: string }
+): Promise<SemanticResult> {
+  return executeTransition("parkWork", {
+    issueId,
+    comment: options?.comment,
+    commentFile: options?.commentFile,
+  }, {
+    targetState: "backlog",
+    commentMode: "optional",
+    clearDelegate: true,
+    clearAssignee: true,
   });
 }

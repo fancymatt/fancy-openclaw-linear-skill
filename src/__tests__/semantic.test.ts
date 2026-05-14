@@ -112,6 +112,10 @@ beforeEach(() => {
 
 describe("considerWork", () => {
   it("sets delegate=self, status=In Progress, assignee=null", async () => {
+    mockGetIssue.mockResolvedValue({
+      ...baseIssue,
+      delegate: { id: "user-igor", name: "Igor (Back End Dev)" },
+    });
     const result = await considerWork("AI-100");
     expect(mockUpdateIssue).toHaveBeenCalledWith("AI-100", {
       stateId: "state-thinking",
@@ -133,6 +137,28 @@ describe("considerWork", () => {
   it("does not post any comment", async () => {
     await considerWork("AI-100");
     expect(mockAddComment).not.toHaveBeenCalled();
+  });
+
+  it("no-ops when the issue is no longer delegated or assigned to self", async () => {
+    mockGetIssue.mockResolvedValue({
+      ...baseIssue,
+      delegate: { id: "user-charles", name: "Charles (CTO)" },
+      assignee: null,
+    });
+
+    const result = await considerWork("AI-100");
+
+    expect(mockUpdateIssue).not.toHaveBeenCalled();
+    expect(mockAddComment).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      command: "considerWork",
+      issueId: "AI-100",
+      state: "Todo",
+      delegate: "Charles (CTO)",
+      assignee: null,
+      commentPosted: false,
+    });
+    expect(result.context).toBeDefined();
   });
 
   it("throws when issue has no team", async () => {
