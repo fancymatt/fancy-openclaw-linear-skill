@@ -8,7 +8,7 @@ import { getMyBlocked } from "./blocked";
 import { getBoard, getRecentlyDone, getReviewQueue, getStalled } from "./boards";
 import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman, observeIssue, note, parkWork } from "./semantic";
 import { addComment, createIssue, findUserByName, resolveUserWithHints, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue, verifyComment } from "./issues";
-import { attachIssueToMilestone, attachIssueToProject, createMilestone, findProjectByName, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
+import { attachIssueToMilestone, attachIssueToProject, attachIssueToProjectById, createMilestone, createProject, editProject, findProjectByName, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
 import { createBlockingRelation, listRelations, removeBlockingRelation, removeParentIssue, setParentIssue } from "./relations";
 import { findStateByName, getWorkflowStates } from "./states";
 import { listTeams, resolveTeamId } from "./teams";
@@ -481,6 +481,27 @@ async function main(): Promise<void> {
   });
   program.command("milestone-attach").argument("<id>").argument("<name>").action(async (id: string, name: string) => {
     await runCommand(async () => attachIssueToMilestone(id, name), program.opts<{ human?: boolean }>().human);
+  });
+  program.command("project-create").argument("<team>").argument("<name>").option("--description <text>", "Project description").option("--description-file <path>", "Path to file containing description (overrides --description)").option("--lead <name|uuid>", "Lead user name or UUID").option("--state <state>", "Project state (Planned|Started|Paused|Completed|Canceled)").option("--target-date <date>", "Target date (YYYY-MM-DD)").option("--start-date <date>", "Start date (YYYY-MM-DD)").action(async (team: string, name: string, options: { description?: string; descriptionFile?: string; lead?: string; state?: string; targetDate?: string; startDate?: string }) => {
+    await runCommand(async () => {
+      let description = options.description
+      if (options.descriptionFile) {
+        description = await fs.readFile(options.descriptionFile, "utf-8")
+      }
+      return createProject(team, name, { description, lead: options.lead, state: options.state, targetDate: options.targetDate, startDate: options.startDate })
+    }, program.opts<{ human?: boolean }>().human)
+  });
+  program.command("project-edit").argument("<projectId>").option("--name <name>", "New project name").option("--description <text>", "Project description").option("--description-file <path>", "Path to file containing description (overrides --description)").option("--lead <name|uuid>", "Lead user name or UUID").option("--state <state>", "Project state (Planned|Started|Paused|Completed|Canceled)").option("--target-date <date>", "Target date (YYYY-MM-DD)").option("--start-date <date>", "Start date (YYYY-MM-DD)").action(async (projectId: string, options: { name?: string; description?: string; descriptionFile?: string; lead?: string; state?: string; targetDate?: string; startDate?: string }) => {
+    await runCommand(async () => {
+      let description = options.description
+      if (options.descriptionFile) {
+        description = await fs.readFile(options.descriptionFile, "utf-8")
+      }
+      return editProject(projectId, { name: options.name, description, lead: options.lead, state: options.state, targetDate: options.targetDate, startDate: options.startDate })
+    }, program.opts<{ human?: boolean }>().human)
+  });
+  program.command("project-attach-existing").argument("<issueId>").argument("<projectId>").option("--milestone <milestoneId>", "Milestone ID to attach in one shot").action(async (issueId: string, projectId: string, options: { milestone?: string }) => {
+    await runCommand(async () => attachIssueToProjectById(issueId, projectId, options.milestone), program.opts<{ human?: boolean }>().human)
   });
   program.command("relations").argument("<id>").action(async (id: string) => {
     await runCommand(async () => listRelations(id), program.opts<{ human?: boolean }>().human);
