@@ -2,6 +2,8 @@ export interface User {
   id: string;
   name: string;
   email?: string | null;
+  /** Optional on integrations that can distinguish bot/agent users. */
+  isAgent?: boolean | null;
 }
 
 export interface WorkflowState {

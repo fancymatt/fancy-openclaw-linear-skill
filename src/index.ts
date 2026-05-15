@@ -91,9 +91,62 @@ function isObserveResult(value: unknown): value is ObserveResult {
   );
 }
 
+function hasObserveContext(value: unknown): value is { context: ObserveResult } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "context" in value &&
+    isObserveResult((value as { context?: unknown }).context)
+  );
+}
+
 type RenderEvent =
   | { kind: "comment"; createdAt: string; body: string; user: string }
   | { kind: "history"; createdAt: string; actor: string | null; type: "state" | "delegate" | "assignee" | "priority"; from: string | null; to: string | null };
+
+type RenderComment = ObserveResult["comments"][number];
+
+function isHumanAuthoredComment(comment: RenderComment): boolean {
+  const user = comment.user;
+  if (user?.name === "Matt Henry") return true;
+  if (user?.isAgent === false) return true;
+  if (user?.isAgent === true) return false;
+
+  // Linear does not currently expose an isAgent flag in all workspaces. Our
+  // agent accounts conventionally include a role in parentheses, e.g.
+  // "Astrid (CPO)" or "Igor (Back End Dev)". Treat those as agents so
+  // human-only pins don't become noisy when the API lacks explicit metadata.
+  return !/\([^)]+\)\s*$/.test(user?.name ?? "");
+}
+
+function renderCommentBlock(comment: RenderComment): string[] {
+  const rel = comment.createdAt ? relativeTime(comment.createdAt) : "";
+  const stamp = `${comment.createdAt}${rel ? ` (${rel})` : ""}`;
+  return [
+    `💬 ${stamp} — ${comment.user?.name ?? "Unknown"}`,
+    `   ${wrapText(comment.body, 70).split("\n").join("\n   ")}`,
+  ];
+}
+
+function renderPinnedComments(data: ObserveResult): string[] {
+  const humanComments = data.comments
+    .filter(isHumanAuthoredComment)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  if (humanComments.length === 0) return [];
+
+  const lines: string[] = [
+    "",
+    "── Human comments pinned above agent history ────────────────",
+    "",
+  ];
+  for (const comment of humanComments) {
+    lines.push(...renderCommentBlock(comment), "");
+  }
+  lines.push("--- agent history below ---");
+
+  return lines;
+}
 
 function renderTimeline(data: ObserveResult): string {
   const lines: string[] = [];
@@ -110,6 +163,8 @@ function renderTimeline(data: ObserveResult): string {
   if (data.assignee) lines.push(`Assignee: ${data.assignee.name}`);
   if (data.delegate) lines.push(`Delegate: ${data.delegate.name}`);
 
+  lines.push(...renderPinnedComments(data));
+
   lines.push("");
   lines.push(`── Timeline ${sep}`);
   lines.push("");
@@ -120,9 +175,15 @@ function renderTimeline(data: ObserveResult): string {
     lines.push(`📌 ${data.createdAt} (${rel}) — Issue created`);
   }
 
-  // Merge comments + history into one chronological stream
+  // Merge comments + history into one chronological stream. When human
+  // comments are pinned above the fold, omit them here to avoid duplicating
+  // them below the separator.
+  const hasPinnedHumanComments = data.comments.some(isHumanAuthoredComment);
+  const timelineComments = hasPinnedHumanComments
+    ? data.comments.filter((c) => !isHumanAuthoredComment(c))
+    : data.comments;
   const merged: RenderEvent[] = [
-    ...data.comments.map((c): RenderEvent => ({
+    ...timelineComments.map((c): RenderEvent => ({
       kind: "comment", createdAt: c.createdAt, body: c.body, user: c.user?.name ?? "Unknown",
     })),
     ...(data.history ?? []).map((h): RenderEvent => ({
@@ -153,6 +214,11 @@ function renderTimeline(data: ObserveResult): string {
 function printResult(result: unknown, human = false): void {
   if (human && isObserveResult(result)) {
     process.stdout.write(renderTimeline(result));
+    return;
+  }
+
+  if (human && hasObserveContext(result)) {
+    process.stdout.write(renderTimeline(result.context));
     return;
   }
 

@@ -37,7 +37,7 @@ export interface ObserveResult {
   assignee: { name: string } | null;
   delegate: { name: string } | null;
   /** Sorted ascending by createdAt */
-  comments: Array<{ id: string; body: string; createdAt: string; user: { name: string } }>;
+  comments: Array<{ id: string; body: string; createdAt: string; user: { name: string; isAgent?: boolean | null } }>;
   /** Sorted ascending by createdAt */
   history: TimelineEvent[];
 }
@@ -78,7 +78,7 @@ export async function observeIssue(
     id: c.id,
     body: c.body,
     createdAt: c.createdAt ?? "",
-    user: c.user ? { name: c.user.name } : { name: "Unknown" },
+    user: c.user ? { name: c.user.name, isAgent: c.user.isAgent } : { name: "Unknown" },
   }));
 
   // Explicit ascending sort by createdAt (guarantee for consumers)
