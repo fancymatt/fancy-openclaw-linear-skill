@@ -1,7 +1,8 @@
 import { linearGraphQL } from "./client";
 import { STATE_BLOCK, ASSIGNEE_BLOCK, TEAM_BLOCK } from "./fragments";
 import { Issue, Project, ProjectMilestone } from "./types";
-import { getIssue, updateIssue } from "./issues";
+import { findUserByName, getIssue, updateIssue } from "./issues";
+import { resolveTeamId } from "./teams";
 
 interface ProjectsResponse {
   projects: {
@@ -243,6 +244,126 @@ export async function createMilestone(projectName: string, name: string, targetD
   }
 
   return data.projectMilestoneCreate.projectMilestone;
+}
+
+interface ProjectCreateResponse {
+  projectCreate: {
+    success: boolean
+    project: { id: string; name: string; url: string } | null
+  }
+}
+
+interface ProjectUpdateResponse {
+  projectUpdate: {
+    success: boolean
+    project: { id: string; name: string; url: string } | null
+  }
+}
+
+export interface ProjectCreateOptions {
+  description?: string
+  lead?: string
+  state?: string
+  targetDate?: string
+  startDate?: string
+}
+
+export interface ProjectEditOptions {
+  name?: string
+  description?: string
+  lead?: string
+  state?: string
+  targetDate?: string
+  startDate?: string
+}
+
+export async function createProject(
+  team: string,
+  name: string,
+  options: ProjectCreateOptions = {}
+): Promise<{ id: string; name: string; url: string }> {
+  const teamId = await resolveTeamId(team)
+  const input: Record<string, unknown> = { teamIds: [teamId], name }
+
+  if (options.description !== undefined) input.description = options.description
+  if (options.state !== undefined) input.state = options.state
+  if (options.targetDate !== undefined) input.targetDate = options.targetDate
+  if (options.startDate !== undefined) input.startDate = options.startDate
+  if (options.lead !== undefined) {
+    const user = await findUserByName(options.lead)
+    input.leadId = user.id
+  }
+
+  const data = await linearGraphQL<ProjectCreateResponse>(
+    `
+      mutation ProjectCreate($input: ProjectCreateInput!) {
+        projectCreate(input: $input) {
+          success
+          project {
+            id
+            name
+            url
+          }
+        }
+      }
+    `,
+    { input }
+  )
+
+  if (!data.projectCreate.success || !data.projectCreate.project) {
+    throw new Error(`Failed to create project "${name}".`)
+  }
+
+  return data.projectCreate.project
+}
+
+export async function editProject(
+  projectId: string,
+  options: ProjectEditOptions
+): Promise<{ id: string; name: string; url: string }> {
+  const input: Record<string, unknown> = {}
+
+  if (options.name !== undefined) input.name = options.name
+  if (options.description !== undefined) input.description = options.description
+  if (options.state !== undefined) input.state = options.state
+  if (options.targetDate !== undefined) input.targetDate = options.targetDate
+  if (options.startDate !== undefined) input.startDate = options.startDate
+  if (options.lead !== undefined) {
+    const user = await findUserByName(options.lead)
+    input.leadId = user.id
+  }
+
+  const data = await linearGraphQL<ProjectUpdateResponse>(
+    `
+      mutation ProjectUpdate($id: String!, $input: ProjectUpdateInput!) {
+        projectUpdate(id: $id, input: $input) {
+          success
+          project {
+            id
+            name
+            url
+          }
+        }
+      }
+    `,
+    { id: projectId, input }
+  )
+
+  if (!data.projectUpdate.success || !data.projectUpdate.project) {
+    throw new Error(`Failed to update project "${projectId}".`)
+  }
+
+  return data.projectUpdate.project
+}
+
+export async function attachIssueToProjectById(
+  issueId: string,
+  projectId: string,
+  milestoneId?: string
+): Promise<Issue> {
+  const update: Record<string, unknown> = { projectId }
+  if (milestoneId !== undefined) update.projectMilestoneId = milestoneId
+  return updateIssue(issueId, update)
 }
 
 export async function attachIssueToMilestone(issueId: string, milestoneName: string): Promise<Issue> {
