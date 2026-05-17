@@ -52,11 +52,17 @@ function enrichMessage(errors: GraphQLErrorDetail[]): string {
   for (const err of errors) {
     const fieldPath = err.path?.join(".");
     const hint = resolveHint(err.message);
+    const userMsg = err.extensions?.userPresentableMessage;
 
     parts.push(err.message);
 
     if (fieldPath) {
       parts.push(`  ↳ field: ${fieldPath}`);
+    }
+
+    // Surface the API's own validation details when available
+    if (userMsg && typeof userMsg === "string" && userMsg !== err.message) {
+      parts.push(`  ↳ detail: ${userMsg}`);
     }
 
     if (hint) {

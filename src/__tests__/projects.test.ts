@@ -7,8 +7,11 @@ import {
   attachIssueToProject,
   listMilestones,
   createMilestone,
-  attachIssueToMilestone
+  attachIssueToMilestone,
+  createProject,
+  editProject
 } from "../projects";
+import { findUserByName } from "../issues";
 
 jest.mock("../client", () => ({
   ...jest.requireActual("../client"),
@@ -17,12 +20,14 @@ jest.mock("../client", () => ({
 
 jest.mock("../issues", () => ({
   getIssue: jest.fn(),
-  updateIssue: jest.fn()
+  updateIssue: jest.fn(),
+  findUserByName: jest.fn()
 }));
 
 const mockedGraphQL = linearGraphQL as jest.MockedFunction<typeof linearGraphQL>;
 const mockGetIssue = getIssue as jest.MockedFunction<typeof getIssue>;
 const mockUpdateIssue = updateIssue as jest.MockedFunction<typeof updateIssue>;
+const mockFindUserByName = findUserByName as unknown as jest.MockedFunction<typeof findUserByName>;
 
 const mockProject = {
   id: "proj-1",
@@ -204,5 +209,75 @@ describe("attachIssueToMilestone", () => {
   it("throws when issue has no project", async () => {
     mockGetIssue.mockResolvedValue({ project: null } as any);
     await expect(attachIssueToMilestone("issue-1", "Sprint 1")).rejects.toThrow("not attached to a project");
+  });
+});
+
+describe("createProject description routing", () => {
+  beforeEach(() => {
+    mockedGraphQL.mockReset();
+    mockFindUserByName.mockReset();
+    // resolveTeamId uses cached teams, so no GraphQL call needed for that.
+    // Only the createProject mutation call hits GraphQL.
+    mockedGraphQL.mockResolvedValueOnce({
+      projectCreate: { success: true, project: { id: "p-new", name: "New Project", url: "https://linear.app/test" } }
+    });
+  });
+
+  it("puts short descriptions in the description field", async () => {
+    await createProject("AI", "Test", { description: "Short desc under 255 chars" });
+    const input = mockedGraphQL.mock.calls[0][1]!.input as Record<string, unknown>;
+    expect(input.description).toBe("Short desc under 255 chars");
+    expect(input.content).toBeUndefined();
+  });
+
+  it("routes long descriptions to content field and truncates description", async () => {
+    const longDesc = "A".repeat(300);
+    await createProject("AI", "Test", { description: longDesc });
+    const input = mockedGraphQL.mock.calls[0]![1]!.input as Record<string, unknown>;
+    expect((input.description as string).length).toBeLessThanOrEqual(255);
+    expect(input.content).toBe(longDesc);
+  });
+
+  it("routes multi-line descriptions to content field", async () => {
+    const multiDesc = "## Title\n\nA short first paragraph\n\n### Details\n\nWith more content " + "x".repeat(200);
+    expect(multiDesc.length).toBeGreaterThan(255);
+    await createProject("AI", "Test", { description: multiDesc });
+    const input = mockedGraphQL.mock.calls[0][1]!.input as Record<string, unknown>;
+    expect(input.content).toBe(multiDesc);
+    expect(input.description).toBeDefined();
+  });
+});
+
+describe("editProject description routing", () => {
+  beforeEach(() => {
+    mockedGraphQL.mockReset();
+    mockFindUserByName.mockReset();
+    mockedGraphQL.mockResolvedValue({
+      projectUpdate: { success: true, project: { id: "proj-1", name: "Test Project", url: "https://linear.app/test" } }
+    });
+  });
+
+  it("puts short descriptions in the description field", async () => {
+    await editProject("proj-1", { description: "Short desc" });
+    const input = mockedGraphQL.mock.calls[0][1]!.input as Record<string, unknown>;
+    expect(input.description).toBe("Short desc");
+    expect(input.content).toBeUndefined();
+  });
+
+  it("routes long descriptions to content field", async () => {
+    const longDesc = "B".repeat(300);
+    await editProject("proj-1", { description: longDesc });
+    const input = mockedGraphQL.mock.calls[0][1]!.input as Record<string, unknown>;
+    expect((input.description as string).length).toBeLessThanOrEqual(255);
+    expect(input.content).toBe(longDesc);
+  });
+
+  it("routes multi-line descriptions to content field", async () => {
+    const multiDesc = "Line one\nLine two\nLine three\n\nMore stuff " + "padding ".repeat(50);
+    expect(multiDesc.length).toBeGreaterThan(255);
+    await editProject("proj-1", { description: multiDesc });
+    const input = mockedGraphQL.mock.calls[0][1]!.input as Record<string, unknown>;
+    expect(input.content).toBe(multiDesc);
+    expect(input.description).toBeDefined();
   });
 });

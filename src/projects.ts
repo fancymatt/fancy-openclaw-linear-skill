@@ -277,6 +277,28 @@ export interface ProjectEditOptions {
   startDate?: string
 }
 
+const PROJECT_DESCRIPTION_MAX = 255;
+
+/**
+ * Linear's `ProjectCreateInput`/`ProjectUpdateInput` has two fields for text:
+ *   - `description`: short summary, max 255 characters
+ *   - `content`: full project body, accepts markdown strings of arbitrary length
+ *
+ * This helper routes the user-supplied description to the right field(s).
+ */
+function setDescription(input: Record<string, unknown>, description: string): void {
+  if (description.length <= PROJECT_DESCRIPTION_MAX) {
+    input.description = description;
+  } else {
+    // Use the first sentence/line (up to 255 chars) as the short description,
+    // and the full text as the rich content body.
+    const short = description.slice(0, PROJECT_DESCRIPTION_MAX);
+    const breakPoint = short.lastIndexOf(" ");
+    input.description = breakPoint > 0 ? short.slice(0, breakPoint) : short;
+    input.content = description;
+  }
+}
+
 export async function createProject(
   team: string,
   name: string,
@@ -285,7 +307,7 @@ export async function createProject(
   const teamId = await resolveTeamId(team)
   const input: Record<string, unknown> = { teamIds: [teamId], name }
 
-  if (options.description !== undefined) input.description = options.description
+  if (options.description !== undefined) setDescription(input, options.description)
   if (options.state !== undefined) input.state = options.state
   if (options.targetDate !== undefined) input.targetDate = options.targetDate
   if (options.startDate !== undefined) input.startDate = options.startDate
@@ -324,7 +346,7 @@ export async function editProject(
   const input: Record<string, unknown> = {}
 
   if (options.name !== undefined) input.name = options.name
-  if (options.description !== undefined) input.description = options.description
+  if (options.description !== undefined) setDescription(input, options.description)
   if (options.state !== undefined) input.state = options.state
   if (options.targetDate !== undefined) input.targetDate = options.targetDate
   if (options.startDate !== undefined) input.startDate = options.startDate
