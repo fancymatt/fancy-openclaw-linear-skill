@@ -10,7 +10,7 @@ import { considerWork, refuseWork, beginWork, handoffWork, complete, needsHuman,
 import { addComment, createIssue, findUserByName, resolveUserWithHints, getIssue, getMyIssues, getMyNewIssues, getMyQueue, updateIssue, verifyComment } from "./issues";
 import { attachIssueToMilestone, attachIssueToProject, attachIssueToProjectById, createMilestone, createProject, editProject, findProjectByName, getProjectDetail, getProjectIssues, listMilestones, listProjects } from "./projects";
 import { createBlockingRelation, listRelations, removeBlockingRelation, removeParentIssue, setParentIssue } from "./relations";
-import { findStateByName, getWorkflowStates } from "./states";
+import { findSemanticState, findStateByName, getWorkflowStates } from "./states";
 import { listTeams, resolveTeamId } from "./teams";
 import { uploadFile } from "./upload";
 import { deleteIssue, deleteComment } from "./delete";
@@ -407,6 +407,7 @@ async function main(): Promise<void> {
     .option("--delegate <name|uuid>")
     .option("--priority <priority>")
     .option("--parent <parentId>")
+    .option("--state <state>", "Workflow state name or semantic alias (todo, backlog, doing, thinking). Defaults to To Do.")
     .option("--dry-run", "Resolve inputs and print the create payload without creating an issue")
     .action(async (team: string, title: string, options: Record<string, string | boolean | undefined>) => {
       await runCommand(async () => {
@@ -415,6 +416,14 @@ async function main(): Promise<void> {
         const delegateName = typeof options.delegate === "string" ? options.delegate : undefined;
         const assignee = assigneeName ? await resolveUserWithHints(assigneeName, "create") : undefined;
         const delegate = delegateName ? await resolveUserWithHints(delegateName, "create") : undefined;
+        const stateName = typeof options.state === "string" ? options.state : undefined;
+        if (stateName && stateName.toLowerCase() === "backlog" && (assigneeName || delegateName)) {
+          process.stderr.write(
+            "Warning: creating a Backlog ticket with an assignee or delegate. " +
+            "Backlog tickets are skipped by the Linear connector — this ticket will not be picked up automatically. " +
+            "If the work is ready for implementation, use --state todo instead.\n"
+          );
+        }
         let description = typeof options.description === "string" ? options.description : undefined;
         const descriptionFile = typeof options.descriptionFile === "string" ? options.descriptionFile : undefined;
         if (descriptionFile) {
@@ -434,6 +443,7 @@ async function main(): Promise<void> {
           const project = await findProjectByName(projectId);
           projectId = project.id;
         }
+        const stateId = stateName && teamId ? (await findSemanticState(teamId, stateName)).id : undefined;
         const input: CreateIssueInput = {
           title,
           description,
@@ -442,7 +452,8 @@ async function main(): Promise<void> {
           assigneeId: assignee?.id,
           delegateId: delegate?.id,
           priority: parseOptionalNumber(typeof options.priority === "string" ? options.priority : undefined),
-          parentId: typeof options.parent === "string" ? options.parent : undefined
+          parentId: typeof options.parent === "string" ? options.parent : undefined,
+          stateId
         } as CreateIssueInput;
         if (teamId) {
           input.teamId = teamId;

@@ -148,7 +148,8 @@ export async function createIssue(input: CreateIssueInput): Promise<Issue> {
         assigneeId: input.assigneeId,
         delegateId: input.delegateId,
         priority: input.priority,
-        parentId: input.parentId
+        parentId: input.parentId,
+        ...(input.stateId ? { stateId: input.stateId } : {})
       }
     }
   );

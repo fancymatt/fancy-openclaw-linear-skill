@@ -151,9 +151,10 @@ linear block <ID> --blocked-by <ID>  # Mark as blocking
 linear unblock <ID> --blocked-by <ID>  # Remove block
 linear verify-comment <commentId>    # Strongly-consistent comment existence check
 linear project-issues <project>      # List project issues
-linear create <TEAM> "<title>"       # Create issue
+linear create <TEAM> "<title>"       # Create issue (defaults to To Do state)
 linear create <TEAM> "<title>" --description-file <path>  # Preferred for Markdown/multiline descriptions
 linear create <TEAM> "<title>" --project <name|id>  # Attach to a Linear project
+linear create <TEAM> "<title>" --state <name>  # Explicit state: todo, backlog, doing, thinking (default: To Do)
 linear create <TEAM> "<title>" --dry-run  # Print resolved payload without writing
 linear create <TEAM> "<title>" --assignee <name|uuid>  # Assign on create
 linear create <TEAM> "<title>" --delegate <name|uuid>  # Delegate on create
@@ -194,6 +195,22 @@ linear create AI "Title" --project "<project-id>" --description-file /tmp/desc.m
 ```
 
 Prefer project IDs over names when available; names are easier for humans but IDs avoid ambiguity and stale memory.
+
+## Ticket State on Creation
+
+**Rule: actionable tickets go to To Do, not Backlog.**
+
+- `linear create` defaults to To Do (Linear's API default). This is correct — do not override it with `--state backlog` for work that is ready to be picked up.
+- **Backlog is for intentional parking only**: non-milestone project ideas, waiting-on-something items, deprioritized work that Matt has explicitly asked to defer.
+- The Linear connector skips Backlog wake-ups. A ticket with a delegate in Backlog will never be auto-dispatched — it silently sits until a human manually flips it.
+- If you create a ticket with `--state backlog` AND `--assignee` or `--delegate`, the CLI will warn you. Fix it by using `--state todo` instead.
+
+| Situation | Correct state |
+|---|---|
+| Ticket is ready for implementation, has a delegate | To Do (default) |
+| Ticket is a future idea not yet scoped | Backlog |
+| Matt says "put this in the backlog" | Backlog (and remove from milestone) |
+| Sub-task spawned during active sprint | To Do |
 
 ## Team Keys
 - `LIFE` — Matt's Personal Life

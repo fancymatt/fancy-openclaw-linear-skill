@@ -111,6 +111,7 @@ export interface CreateIssueInput {
   delegateId?: string;
   priority?: number;
   parentId?: string;
+  stateId?: string;
 }
 
 export interface UpdateIssueInput {
