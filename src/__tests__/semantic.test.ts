@@ -335,12 +335,26 @@ describe("refuseWork", () => {
     expect(result.commentPosted).toBe(true);
   });
 
-  it("throws when comment is missing", async () => {
-    await expect(refuseWork("AI-100", "Charles (CTO)", {})).rejects.toThrow("non-empty comment");
+  it("succeeds without comment (emits stderr warning)", async () => {
+    const spy = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const result = await refuseWork("AI-100", "Charles (CTO)", {});
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("no comment provided"));
+    spy.mockRestore();
+    expect(mockAddComment).not.toHaveBeenCalled();
+    expect(mockUpdateIssue).toHaveBeenCalledWith("AI-100", {
+      stateId: "state-todo",
+      delegateId: "user-charles",
+    });
+    expect(result.commentPosted).toBe(false);
   });
 
-  it("throws when comment is whitespace-only", async () => {
-    await expect(refuseWork("AI-100", "Charles (CTO)", { comment: "   " })).rejects.toThrow("non-empty comment");
+  it("treats whitespace-only comment as empty (emits stderr warning)", async () => {
+    const spy = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const result = await refuseWork("AI-100", "Charles (CTO)", { comment: "   " });
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("no comment provided"));
+    spy.mockRestore();
+    expect(mockAddComment).not.toHaveBeenCalled();
+    expect(result.commentPosted).toBe(false);
   });
 });
 
@@ -404,8 +418,18 @@ describe("handoffWork", () => {
     });
   });
 
-  it("throws when comment is missing", async () => {
-    await expect(handoffWork("AI-100", "Charles (CTO)", {})).rejects.toThrow("non-empty comment");
+  it("succeeds without comment (emits stderr warning)", async () => {
+    const spy = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const result = await handoffWork("AI-100", "Charles (CTO)", {});
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("no comment provided"));
+    spy.mockRestore();
+    expect(mockAddComment).not.toHaveBeenCalled();
+    expect(mockUpdateIssue).toHaveBeenCalledWith("AI-100", {
+      stateId: "state-todo",
+      delegateId: "user-charles",
+      assigneeId: null,
+    });
+    expect(result.commentPosted).toBe(false);
   });
 
   it("is idempotent — safe to call multiple times", async () => {
@@ -463,8 +487,18 @@ describe("needsHuman", () => {
     });
   });
 
-  it("throws when comment is missing", async () => {
-    await expect(needsHuman("AI-100", "Matt Henry", {})).rejects.toThrow("non-empty comment");
+  it("succeeds without comment (emits stderr warning)", async () => {
+    const spy = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const result = await needsHuman("AI-100", "Matt Henry", {});
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("no comment provided"));
+    spy.mockRestore();
+    expect(mockAddComment).not.toHaveBeenCalled();
+    expect(mockUpdateIssue).toHaveBeenCalledWith("AI-100", {
+      stateId: "state-todo",
+      delegateId: null,
+      assigneeId: "user-matt",
+    });
+    expect(result.commentPosted).toBe(false);
   });
 
   it("is idempotent — safe to call multiple times", async () => {
