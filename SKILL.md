@@ -83,7 +83,9 @@ linear handoff-work AI-123 "Charles (CTO)" --comment-file /tmp/linear-comment.md
 
 #### Comment Options
 
-All write commands accept `--comment "<msg>"` or `--comment-file <path>` for comments. `refuse-work`, `handoff-work`, and `needs-human` require a comment. `consider-work` and `begin-work` do not accept comments — agents should not comment without a handoff.
+All write commands accept `--comment "<msg>"` or `--comment-file <path>` for comments. `refuse-work`, `handoff-work`, and `needs-human` accept an optional comment — if omitted, the command still succeeds but emits a soft stderr warning. `consider-work` and `begin-work` do not accept comments — agents should not comment without a handoff.
+
+> **One comment per turn, maximum.** If you have already posted a substantive comment in the current turn (via `note`, a prior `handoff-work`, etc.), do NOT post a second comment that summarizes or references the first. The comment IS the output. Never follow a substantive comment with a meta-comment like "Analysis posted — see above" or "Investigation complete — handing back for review." If you used `linear note` to post your analysis and now need to hand off, use the handoff command's `--comment` to add only what's genuinely new — or if the note already says everything, keep the handoff comment minimal (one sentence max).
 
 ### When to Use Each Command
 
@@ -107,6 +109,7 @@ All write commands accept `--comment "<msg>"` or `--comment-file <path>` for com
 3. **If it's not your area, give your perspective and delegate back.** Use `handoff-work` or `refuse-work`.
 4. **Structural issues get their own tickets.** Don't bury observations as footnotes.
 5. **Move tickets forward immediately.** New tickets → delegate to appropriate agent via the semantic commands.
+6. **One comment per turn, maximum.** Never post a second comment in the same turn that summarizes or references a comment you just posted. The "Assessment posted — see above" pattern is noise. Pick the right command and put everything in its `--comment`. If the handoff command forces a `--comment` but you already said everything in a `note`, write one sentence max on the handoff comment (e.g., "See prior comment for full analysis.") — don't repeat yourself.
 
 ### Closing Rules — Non-Negotiable
 

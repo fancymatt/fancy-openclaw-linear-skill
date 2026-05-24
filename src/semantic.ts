@@ -205,7 +205,7 @@ export async function refuseWork(
     commandName: "refuse-work",
   }, {
     targetState: "todo",
-    commentMode: "required",
+    commentMode: "optional-with-warning",
     delegateName: (args) => args.userName,
     commentFirst: true,
   });
@@ -251,7 +251,7 @@ export async function handoffWork(
     commandName: "handoff-work",
   }, {
     targetState: "todo",
-    commentMode: "required",
+    commentMode: "optional-with-warning",
     delegateName: (args) => args.userName,
     clearAssignee: true,
     commentFirst: true,
@@ -341,7 +341,7 @@ export async function needsHuman(
     commandName: "needs-human",
   }, {
     targetState: "todo",
-    commentMode: "required",
+    commentMode: "optional-with-warning",
     clearDelegate: true,
     assigneeName: (args) => args.userName,
     commentFirst: true,

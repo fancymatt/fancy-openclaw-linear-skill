@@ -101,7 +101,7 @@ function requireComment(
 
 // --- State machine types ---
 
-export type CommentMode = "none" | "optional" | "required";
+export type CommentMode = "none" | "optional" | "required" | "optional-with-warning";
 
 export interface StateTransition {
   /** Semantic state name to transition to (e.g. "thinking", "doing", "todo", "done") */
@@ -272,6 +272,8 @@ export async function executeTransition(
   const body = await resolveComment(args.comment, args.commentFile);
   if (config.commentMode === "required") {
     requireComment(commandName, body);
+  } else if (config.commentMode === "optional-with-warning" && !body) {
+    process.stderr.write(`Warning: no comment provided on ${args.commandName ?? commandName}. This is acceptable if a comment was posted earlier in this session.\n`);
   }
 
   // 5. Resolve delegate
