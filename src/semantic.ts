@@ -14,6 +14,7 @@ import {
   isMattTarget,
   logRefusal,
 } from "./matt-escalation-guard";
+import { guardDoneGate } from "./done-gate";
 import { getComments, getIssueHistory } from "./boards";
 import { addComment, getIssue, updateIssue } from "./issues";
 import { resolveLabelIds } from "./labels";
@@ -297,10 +298,9 @@ export async function handoffWork(
     forceDuplicate?: boolean;
     forceMattEscalation?: boolean;
     reviewHandoff?: boolean;
+    forceDoneClaim?: boolean;
   }
 ): Promise<SemanticResult> {
-  await guardMattEscalation(issueId, delegateName, options);
-
   let comment = options?.comment;
   let commentFile = options?.commentFile;
   if (options?.reviewHandoff) {
@@ -329,6 +329,10 @@ export async function handoffWork(
       );
     }
   }
+
+  const guardOptions = { ...options, comment, commentFile };
+  await guardMattEscalation(issueId, delegateName, guardOptions);
+  await guardDoneGate(issueId, guardOptions);
 
   return executeTransition("handoffWork", {
     issueId,
@@ -359,8 +363,9 @@ export async function handoffWork(
  */
 export async function complete(
   issueId: string,
-  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean; forceDoneClaim?: boolean }
 ): Promise<SemanticResult> {
+  await guardDoneGate(issueId, options);
   return executeTransition("complete", {
     issueId,
     comment: options?.comment,
@@ -396,7 +401,7 @@ export interface NoteResult {
  */
 export async function note(
   issueId: string,
-  options: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+  options: { comment?: string; commentFile?: string; forceDuplicate?: boolean; forceDoneClaim?: boolean }
 ): Promise<NoteResult> {
   let body = options.comment?.trim();
   if (options.commentFile) {
@@ -410,6 +415,7 @@ export async function note(
   if (!body) {
     throw new Error("note requires a non-empty comment. Use --comment or --comment-file.");
   }
+  await guardDoneGate(issueId, { comment: body, forceDoneClaim: options.forceDoneClaim });
   const issue = await getIssue(issueId);
   const dup: DuplicateMatch | null = options.forceDuplicate ? null : await findRecentDuplicate(issue.id, body);
   if (dup) {
