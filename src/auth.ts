@@ -20,7 +20,6 @@ interface AgentNameSource {
  * Priority (highest first):
  *   1. OPENCLAW_MCP_AGENT_ID — set by the OpenClaw MCP runtime when invoking the skill
  *   2. OPENCLAW_AGENT_NAME — explicit user override
- *   3. $HOME basename — only if it matches `workspace-<name>` or `openclaw-<name>`
  *
  * If multiple sources resolve to different names, a warning is logged and the
  * highest-priority source wins. This prevents silent wrong-agent token selection.
@@ -33,15 +32,6 @@ export function resolveAgentName(): { name?: string; sources: AgentNameSource[] 
 
   const agentName = process.env.OPENCLAW_AGENT_NAME?.trim();
   if (agentName) sources.push({ source: "OPENCLAW_AGENT_NAME", value: agentName.toLowerCase() });
-
-  const homeBase = path.basename(process.env.HOME ?? "");
-  let pathDerived: string | undefined;
-  if (homeBase.startsWith("workspace-")) {
-    pathDerived = homeBase.slice("workspace-".length);
-  } else if (homeBase.startsWith("openclaw-")) {
-    pathDerived = homeBase.slice("openclaw-".length);
-  }
-  if (pathDerived) sources.push({ source: "$HOME basename", value: pathDerived.toLowerCase() });
 
   const distinct = [...new Set(sources.map((s) => s.value))];
   if (distinct.length > 1) {
@@ -61,11 +51,10 @@ function secretFileCandidates(): string[] {
   const { name } = resolveAgentName();
   const files: string[] = [];
 
+  // Canonical path: workspace/{agentId}/.secrets/linear.env
+  // This is the single source of truth. Tokens should ONLY live here.
   if (home && name) {
-    files.push(path.join(home, `.openclaw/workspace-${name}/.secrets/linear.env`));
-  }
-  if (process.cwd()) {
-    files.push(path.join(process.cwd(), ".secrets/linear.env"));
+    files.push(path.join(home, `.openclaw/workspace/${name}/.secrets/linear.env`));
   }
   return files;
 }

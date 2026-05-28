@@ -93,17 +93,7 @@ describe("resolveAgentName", () => {
     expect(resolveAgentName().name).toBe("astrid");
   });
 
-  it("derives name from $HOME when basename starts with workspace-", () => {
-    process.env.HOME = "/home/fancymatt/.openclaw/workspace-igor";
-    expect(resolveAgentName().name).toBe("igor");
-  });
-
-  it("derives name from $HOME when basename starts with openclaw-", () => {
-    process.env.HOME = "/home/openclaw-felix";
-    expect(resolveAgentName().name).toBe("felix");
-  });
-
-  it("returns no name when no source matches", () => {
+  it("returns no name when no env source is set", () => {
     process.env.HOME = "/home/fancymatt";
     expect(resolveAgentName().name).toBeUndefined();
   });
