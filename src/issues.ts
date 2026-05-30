@@ -692,9 +692,11 @@ interface DelegatedIssuesResponse {
 
 export async function getMyQueue(projectName?: string, options?: { includeBacklog?: boolean }): Promise<Issue[]> {
   const self = await getSelfUser();
+  // Managing is stewardship state, not actionable work — keep it out of the
+  // queue (and `--next`) so it doesn't surface as "what should I do now."
   const stateFilter = options?.includeBacklog
-    ? 'state: { type: { nin: ["completed", "canceled", "started"] } }'
-    : 'state: { type: { nin: ["completed", "canceled", "started"] }, name: { neq: "Backlog" } }';
+    ? 'state: { type: { nin: ["completed", "canceled", "started"] }, name: { neq: "Managing" } }'
+    : 'state: { type: { nin: ["completed", "canceled", "started"] }, name: { nin: ["Backlog", "Managing"] } }';
   const data = await linearGraphQL<DelegatedIssuesResponse>(
     `
       query MyQueue($delegateId: ID!) {
@@ -736,6 +738,43 @@ export async function getMyQueue(projectName?: string, options?: { includeBacklo
     return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '');
   });
 
+  return issues;
+}
+
+/**
+ * Issues in the Managing workflow state delegated to the current viewer.
+ * These are stewardship tickets — parent / externally-blocked work the agent
+ * owns but cannot push forward right now. The Linear Connector wakes the
+ * agent on a cadence to re-review.
+ */
+export async function getMyManaging(): Promise<Issue[]> {
+  const self = await getSelfUser();
+  const data = await linearGraphQL<DelegatedIssuesResponse>(
+    `
+      query MyManaging($delegateId: ID!) {
+        issues(first: 100, filter: {
+          delegate: { id: { eq: $delegateId } },
+          state: { name: { eq: "Managing" } }
+        }) {
+          nodes {
+            id
+            identifier
+            title
+            updatedAt
+            priority
+            ${STATE_BLOCK}
+            ${ASSIGNEE_BLOCK}
+            ${DELEGATE_BLOCK}
+            ${TEAM_BLOCK}
+            project { id name }
+          }
+        }
+      }
+    `,
+    { delegateId: self.id }
+  );
+  const issues = data.issues.nodes;
+  issues.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
   return issues;
 }
 

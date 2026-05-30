@@ -70,6 +70,8 @@ linear handoff-work <ID> <agent>      # Hand off: status=Todo, delegate to agent
 linear complete <ID>                  # Finish: status=Done, clear delegate + assignee (optional --comment)
 linear needs-human <ID> <human>       # Escalate: status=Todo, assignee=human, clear delegate (requires --comment)
 linear park <ID>                      # Deprioritize: status=Backlog, clear delegate + assignee (optional --comment)
+linear manage <ID>                    # Take stewardship: status=Managing, delegate=self, clear assignee (optional --comment)
+linear manage <ID> --interval 2h      # Same, but set per-ticket wake cadence (m/h/d). Default cadence is 30m.
 linear note <ID> --comment "<msg>"    # Post comment only: no state, delegate, or assignee change
                                       # Works on any status (including Done/Canceled)
 ```
@@ -117,6 +119,7 @@ All write commands accept `--comment "<msg>"` or `--comment-file <path>` for com
 | You need a human decision/input | `needs-human <ID> <human> --comment "..."` |
 | You're the wrong person for this task | `refuse-work <ID> <agent> --comment "..."` |
 | Intentionally deprioritizing / parking a ticket | `park <ID>` |
+| Owning a parent / externally-blocked ticket (stewardship) | `manage <ID>` |
 | Browsing tickets without ownership | `observe-issue <ID>` |
 | Adding context to a closed ticket | `note <ID> --comment "..."` |
 
@@ -138,6 +141,37 @@ All write commands accept `--comment "<msg>"` or `--comment-file <path>` for com
    - The fix was implemented and confirmed.
    Silence is not resolution. A flagged issue with no explicit response blocks `complete`.
 
+### Managing — Stewardship State
+
+`Managing` is for tickets you own but cannot push forward right now: parent
+tickets whose work lives in children, tickets blocked on external state
+(deploy, CI, third-party reply), or staged dependencies (B depends on A). It
+sits outside `linear queue` / `--next` so it never competes with directly
+executable work, but the Linear Connector wakes you on a cadence to re-review.
+
+**Default cadence:** 30 minutes per ticket. Override per-ticket by adding a
+line to the description (the `manage` command can write this for you):
+
+```
+Managing-interval: 2h
+```
+
+Accepted units: `s`, `m`, `h`, `d`. Bare numbers default to minutes.
+
+**Stewardship checklist** (what to do when the connector wakes you):
+
+1. Check subtask state. If a child resolved since your last review, decide
+   whether the parent moves forward.
+2. Look for stalled children — anything in Backlog that should be To Do?
+   Anything assigned to the wrong person?
+3. Verify assignee + delegate on each child match the current owner.
+4. If something material changed, post a one-line note on the parent.
+5. If nothing changed and the situation is genuinely the same, no comment.
+
+Move tickets out of Managing when they're complete (`complete`), abandoned
+(`needs-human` / `refuse-work`), or actively workable (`begin-work`). Do not
+let Managing become a graveyard.
+
 ### Comment Verification
 
 **Never read-after-write to verify a comment.** The mutation result is the strongly-consistent source of truth. Trust the `commentId` and `commentUrl` printed on success. If you genuinely need to confirm propagation (rare), use `linear verify-comment <commentId>` — it uses the strongly-consistent node query, not the eventually-consistent connection feed. The `linear comments` / `observe-issue` connection feed can lag by seconds to minutes.
@@ -152,10 +186,11 @@ Agents should NOT use these. They bypass the semantic intent model and cause del
 ## Navigation & Utility Commands
 
 ```
-linear queue                         # Issues delegated to you, not yet started (To Do only by default; excludes Backlog/Thinking/Doing)
-linear queue --include-backlog       # Explicitly include parked Backlog issues
+linear queue                         # Issues delegated to you, not yet started (To Do only by default; excludes Backlog/Managing/Thinking/Doing)
+linear queue --include-backlog       # Explicitly include parked Backlog issues (still excludes Managing)
 linear queue --next                  # Highest-priority not-yet-started issue only
 linear queue --blocked               # Blocked issues only
+linear managing                      # Tickets you are stewarding (Managing state) — connector wakes you on a cadence to re-review
 linear my-issues                     # All issues assigned or delegated to you
 linear my-issues --status "To Do"    # Filter by status
 linear my-issues --new               # New/unviewed issues

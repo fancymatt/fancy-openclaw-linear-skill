@@ -364,7 +364,7 @@ describe("getMyQueue", () => {
     expect(queue.map(i => i.identifier)).toEqual(["AI-200", "AI-300", "AI-100"]);
   });
 
-  it("excludes started states and Backlog server-side via GraphQL filter", async () => {
+  it("excludes started states and Backlog/Managing server-side via GraphQL filter", async () => {
     mockedGraphQL.mockResolvedValue({
       issues: {
         nodes: [
@@ -375,10 +375,10 @@ describe("getMyQueue", () => {
     await getMyQueue();
     const callArgs = mockedGraphQL.mock.calls[0][0] as string;
     expect(callArgs).toContain('nin: ["completed", "canceled", "started"]');
-    expect(callArgs).toContain('name: { neq: "Backlog" }');
+    expect(callArgs).toContain('name: { nin: ["Backlog", "Managing"] }');
   });
 
-  it("can include Backlog with explicit opt-in", async () => {
+  it("can include Backlog with explicit opt-in but still excludes Managing", async () => {
     mockedGraphQL.mockResolvedValue({
       issues: {
         nodes: [
@@ -389,7 +389,8 @@ describe("getMyQueue", () => {
     await getMyQueue(undefined, { includeBacklog: true });
     const callArgs = mockedGraphQL.mock.calls[0][0] as string;
     expect(callArgs).toContain('nin: ["completed", "canceled", "started"]');
-    expect(callArgs).not.toContain('name: { neq: "Backlog" }');
+    expect(callArgs).not.toContain('"Backlog", "Managing"');
+    expect(callArgs).toContain('name: { neq: "Managing" }');
   });
 
   it("filters by project name", async () => {

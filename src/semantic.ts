@@ -15,7 +15,7 @@ import {
   logRefusal,
 } from "./matt-escalation-guard";
 import { getComments, getIssueHistory } from "./boards";
-import { addComment, getIssue } from "./issues";
+import { addComment, getIssue, updateIssue } from "./issues";
 import { IssueHistory } from "./types";
 
 const BACKLOG_CONSIDER_WORK_ERROR = "Ticket is in Backlog — cannot consider work. Use `linear observe-issue` to view, or wait for promotion to To Do.";
@@ -419,6 +419,58 @@ export async function needsHuman(
     clearDelegate: true,
     assigneeName: (args) => args.userName,
     commentFirst: true,
+  });
+}
+
+/**
+ * linear manage <id>
+ *
+ * Take stewardship of a ticket that is not directly executable right now but
+ * still needs an owner — typically a parent ticket whose work is in children,
+ * or a ticket waiting on external state. The Linear Connector wakes the agent
+ * on a cadence to re-review.
+ * - Set status to Managing
+ * - Set delegate to self
+ * - Clear assignee
+ * - Post comment (optional)
+ * - Optionally write `Managing-interval: <duration>` into the description
+ *   (the connector reads this to override the default 30m cadence)
+ */
+function upsertManagingInterval(description: string, interval: string): string {
+  const marker = `Managing-interval: ${interval}`;
+  const matcher = /^Managing-interval:\s*\S.*$/gm;
+  if (matcher.test(description)) {
+    matcher.lastIndex = 0;
+    return description.replace(matcher, marker);
+  }
+  if (description.length === 0) return marker;
+  return `${description.trimEnd()}\n\n${marker}\n`;
+}
+
+export async function manageWork(
+  issueId: string,
+  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean; interval?: string }
+): Promise<SemanticResult> {
+  if (options?.interval) {
+    const issue = await getIssue(issueId);
+    const existingDescription = issue.description ?? "";
+    const nextDescription = upsertManagingInterval(existingDescription, options.interval);
+    if (nextDescription !== existingDescription) {
+      await updateIssue(issueId, { description: nextDescription });
+    }
+  }
+  return executeTransition("manageWork", {
+    issueId,
+    comment: options?.comment,
+    commentFile: options?.commentFile,
+    commandName: "manage",
+    forceDuplicate: options?.forceDuplicate,
+  }, {
+    targetState: "managing",
+    commentMode: "optional",
+    delegateToSelf: true,
+    clearAssignee: true,
+    skipIfSameState: true,
   });
 }
 
