@@ -5,6 +5,24 @@ description: Use the Linear CLI for issue management, delegation, and project wo
 
 # Linear CLI Quick Reference
 
+## Token Location (Single Source of Truth)
+
+Linear OAuth tokens live in **one place only**:
+
+```
+~/.openclaw/workspace/{agentId}/.secrets/linear.env
+```
+
+Exception: the **main** agent has no subdirectory — its token lives at `~/.openclaw/workspace/.secrets/linear.env`. (The `getLinearSecretPath()` helper handles this special case automatically; never compute the path inline.)
+
+Each agent has its own unique token. Tokens must **never** be shared between agents.
+
+The CLI resolves the agent name from `OPENCLAW_MCP_AGENT_ID` or `OPENCLAW_AGENT_NAME` env vars, then loads `LINEAR_OAUTH_TOKEN` from that canonical path.
+
+**When rotating tokens:** update only the file at `~/.openclaw/workspace/{agentId}/.secrets/linear.env` (or `~/.openclaw/workspace/.secrets/linear.env` for main). Do **not** create or update files in `~/.openclaw/workspace-{agentId}/` — those are vestigial profile workspaces and should not contain secrets.
+
+Use `linear doctor` to verify token validity and identity.
+
 ## Debugging
 
 - Add `--debug` to any command to dump raw GraphQL errors to stderr when something fails. Useful for diagnosing opaque validation errors.
