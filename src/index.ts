@@ -830,7 +830,7 @@ async function main(): Promise<void> {
 
   // --- Semantic commands (kebab-case primary, camelCase aliases for compat) ---
 
-  program.command("note").argument("<id>").option("--comment <msg>", `Comment body. ${INLINE_COMMENT_HELP}`).option("--comment-file <path>", "Read comment from file").option("--force-duplicate", "Bypass near-duplicate comment detection and force the post").description("Post a comment on an issue without changing state, delegate, or assignee").action(async (id: string, options: { comment?: string; commentFile?: string; forceDuplicate?: boolean }) => {
+  program.command("note").argument("<id>").option("--comment <msg>", `Comment body. ${INLINE_COMMENT_HELP}`).option("--comment-file <path>", "Read comment from file").option("--force-duplicate", "Bypass near-duplicate comment detection and force the post").option("--force-done-claim", "Bypass done-gate provenance check (logged loudly; use only when artifacts genuinely exist but cannot be verified from cwd)").description("Post a comment on an issue without changing state, delegate, or assignee").action(async (id: string, options: { comment?: string; commentFile?: string; forceDuplicate?: boolean; forceDoneClaim?: boolean }) => {
     await runCommand(async () => note(id, options), program.opts<{ human?: boolean }>().human);
   });
 
@@ -850,11 +850,11 @@ async function main(): Promise<void> {
     await runCommand(async () => beginWork(id), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("handoff-work").alias("handoffWork").argument("<id>").argument("<delegate>", "agent display name in quotes, e.g. \"Charles (CTO)\"").option("--comment <msg>", INLINE_COMMENT_HELP).option("--comment-file <path>", "Read comment from file").option("--force-duplicate", "Bypass near-duplicate comment detection and force the post").option("--force-matt-escalation", "Bypass Matt-escalation refusal guard (use only for legitimate escalations)").option("--review-handoff", "Mark as peer-review handoff: applies gate:agent-review label and prefixes comment with [Review Handoff]").description("Hand off task to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string; forceDuplicate?: boolean; forceMattEscalation?: boolean; reviewHandoff?: boolean }) => {
+  program.command("handoff-work").alias("handoffWork").argument("<id>").argument("<delegate>", "agent display name in quotes, e.g. \"Charles (CTO)\"").option("--comment <msg>", INLINE_COMMENT_HELP).option("--comment-file <path>", "Read comment from file").option("--force-duplicate", "Bypass near-duplicate comment detection and force the post").option("--force-matt-escalation", "Bypass Matt-escalation refusal guard (use only for legitimate escalations)").option("--force-done-claim", "Bypass done-gate provenance check (logged loudly; use only when artifacts genuinely exist but cannot be verified from cwd)").option("--review-handoff", "Mark as peer-review handoff: applies gate:agent-review label and prefixes comment with [Review Handoff]").description("Hand off task to another agent").action(async (id: string, delegate: string, options: { comment?: string; commentFile?: string; forceDuplicate?: boolean; forceMattEscalation?: boolean; forceDoneClaim?: boolean; reviewHandoff?: boolean }) => {
     await runCommand(async () => handoffWork(id, delegate, options), program.opts<{ human?: boolean }>().human);
   });
 
-  program.command("complete").argument("<id>").option("--comment <msg>", INLINE_COMMENT_HELP).option("--comment-file <path>", "Read comment from file").option("--force-duplicate", "Bypass near-duplicate comment detection and force the post").description("Mark task as complete").action(async (id: string, options: { comment?: string; commentFile?: string; forceDuplicate?: boolean }) => {
+  program.command("complete").argument("<id>").option("--comment <msg>", INLINE_COMMENT_HELP).option("--comment-file <path>", "Read comment from file").option("--force-duplicate", "Bypass near-duplicate comment detection and force the post").option("--force-done-claim", "Bypass done-gate provenance check (logged loudly; use only when artifacts genuinely exist but cannot be verified from cwd)").description("Mark task as complete").action(async (id: string, options: { comment?: string; commentFile?: string; forceDuplicate?: boolean; forceDoneClaim?: boolean }) => {
     await runCommand(async () => complete(id, options), program.opts<{ human?: boolean }>().human);
   });
 
