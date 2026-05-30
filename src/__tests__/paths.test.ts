@@ -4,11 +4,14 @@ import path from "node:path";
 import { getAgentWorkspaceDir, getLinearSecretPath } from "../paths";
 
 describe("getAgentWorkspaceDir", () => {
-  const saved = process.env.OPENCLAW_CONFIG_DIR;
+  const savedConfigDir = process.env.OPENCLAW_CONFIG_DIR;
+  const savedHome = process.env.HOME;
 
   afterEach(() => {
-    if (saved === undefined) delete process.env.OPENCLAW_CONFIG_DIR;
-    else process.env.OPENCLAW_CONFIG_DIR = saved;
+    if (savedConfigDir === undefined) delete process.env.OPENCLAW_CONFIG_DIR;
+    else process.env.OPENCLAW_CONFIG_DIR = savedConfigDir;
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
   });
 
   it("returns configDir/workspace/{agentId} for named agents", () => {
@@ -30,8 +33,17 @@ describe("getAgentWorkspaceDir", () => {
     );
   });
 
-  it("falls back to ~/.openclaw when neither override nor env is set", () => {
+  it("falls back to $HOME/.openclaw when neither override nor env is set", () => {
     delete process.env.OPENCLAW_CONFIG_DIR;
+    process.env.HOME = "/fake-home";
+    expect(getAgentWorkspaceDir("astrid")).toBe(
+      path.join("/fake-home", ".openclaw", "workspace", "astrid"),
+    );
+  });
+
+  it("falls back to os.homedir()/.openclaw when HOME is unset", () => {
+    delete process.env.OPENCLAW_CONFIG_DIR;
+    delete process.env.HOME;
     expect(getAgentWorkspaceDir("astrid")).toBe(
       path.join(os.homedir(), ".openclaw", "workspace", "astrid"),
     );
