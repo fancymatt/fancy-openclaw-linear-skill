@@ -16,6 +16,7 @@ export const SEMANTIC_STATE_MAP: Record<string, string[]> = {
   todo: ["Todo", "To Do"],
   thinking: ["Thinking", "In Progress"],
   doing: ["Doing", "In Progress"],
+  managing: ["Managing"],
   done: ["Done"],
   invalid: ["Invalid", "Canceled", "Cancelled"],
 };
