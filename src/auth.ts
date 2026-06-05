@@ -130,7 +130,34 @@ function envVarCandidates(): string[] {
   ];
 }
 
+const EXTRA_ENV_KEYS = ["LINEAR_PROXY_URL"] as const;
+
+/**
+ * Load supplemental LINEAR_* env vars (e.g. LINEAR_PROXY_URL) from the
+ * agent's secrets file into process.env, without overriding vars that are
+ * already set. Called once during ensureApiKey so proxy routing is available
+ * to client.ts before the first GraphQL call.
+ */
+function loadExtrasFromSecretFiles(): void {
+  for (const filePath of secretFileCandidates()) {
+    if (!fs.existsSync(filePath)) continue;
+    const content = fs.readFileSync(filePath, "utf8");
+    for (const line of content.split(/\r?\n/)) {
+      const match = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)=(.*)\s*$/);
+      if (!match) continue;
+      const [, key, rawValue] = match;
+      if (!(EXTRA_ENV_KEYS as readonly string[]).includes(key)) continue;
+      if (process.env[key]) continue; // process env wins
+      const value = rawValue.replace(/^['"]|['"]$/g, "").trim();
+      if (value) process.env[key] = value;
+    }
+    break; // only load from the first file found (same precedence as token lookup)
+  }
+}
+
 export function ensureApiKey(): string {
+  loadExtrasFromSecretFiles();
+
   for (const name of envVarCandidates()) {
     if (process.env[name]) {
       process.env.LINEAR_API_KEY = process.env[name]!;
