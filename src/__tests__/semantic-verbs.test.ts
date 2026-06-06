@@ -13,7 +13,7 @@ import fs from "node:fs/promises";
 
 import { getSelfUser } from "../auth";
 import { addComment, resolveUserWithHints, getIssue, updateIssue } from "../issues";
-import { findSemanticState } from "../states";
+import { findSemanticState, SEMANTIC_STATE_MAP } from "../states";
 import {
   accept,
   submit,
@@ -80,8 +80,6 @@ const baseIssue: any = {
 const todoState = { id: "state-todo", name: "Todo", type: "unstarted" };
 const doingState = { id: "state-doing", name: "In Progress", type: "started" };
 const thinkingState = { id: "state-thinking", name: "In Progress", type: "started" };
-const reviewState = { id: "state-review", name: "In Review", type: "started" };
-const deployingState = { id: "state-deploying", name: "Deploying", type: "started" };
 const doneState = { id: "state-done", name: "Done", type: "completed" };
 const backlogState = { id: "state-backlog", name: "Backlog", type: "backlog" };
 
@@ -98,11 +96,14 @@ beforeEach(() => {
     return user;
   });
   mockFindSemanticState.mockImplementation(async (_teamId: string, semantic: string) => {
+    // Validate that the semantic key actually exists in the real SEMANTIC_STATE_MAP.
+    // This catches the case where a verb targets a non-existent state (e.g. "review").
+    if (!(semantic.toLowerCase() in SEMANTIC_STATE_MAP)) {
+      throw new Error(`Unknown semantic state "${semantic}"`);
+    }
     const map: Record<string, any> = {
       doing: doingState,
       thinking: thinkingState,
-      review: reviewState,
-      deploying: deployingState,
       todo: todoState,
       done: doneState,
       backlog: backlogState,

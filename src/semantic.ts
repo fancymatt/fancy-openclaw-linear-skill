@@ -826,12 +826,6 @@ export async function reject(
  * Break-glass: steward escapes the ticket out of the workflow.
  * dev-impl: any state → escape terminal (steward action)
  */
-/**
- * linear escape <id>
- *
- * Break-glass: steward escapes the ticket out of the workflow.
- * dev-impl: any state → escape terminal (steward action)
- */
 export async function escape(
   issueId: string,
   options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
