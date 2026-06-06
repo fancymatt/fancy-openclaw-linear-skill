@@ -14,6 +14,7 @@ import {
   isMattTarget,
   logRefusal,
 } from "./matt-escalation-guard";
+import { setProxyIntent } from "./client";
 import { getComments, getIssueHistory } from "./boards";
 import { addComment, getIssue, updateIssue } from "./issues";
 import { resolveLabelIds } from "./labels";
@@ -526,20 +527,27 @@ export async function needsHuman(
   options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean; forceMattEscalation?: boolean }
 ): Promise<SemanticResult> {
   await guardMattEscalation(issueId, assigneeName, options);
-  return executeTransition("needsHuman", {
-    issueId,
-    comment: options?.comment,
-    commentFile: options?.commentFile,
-    userName: assigneeName,
-    commandName: "needs-human",
-    forceDuplicate: options?.forceDuplicate,
-  }, {
-    targetState: "todo",
-    commentMode: "optional-with-warning",
-    clearDelegate: true,
-    assigneeName: (args) => args.userName,
-    commentFirst: true,
-  });
+  // Signal intent to the proxy so it can enforce steward-only escalation on
+  // workflow tickets (Phase 2 / slice 1, design.md §11, §13).
+  setProxyIntent("needs-human");
+  try {
+    return await executeTransition("needsHuman", {
+      issueId,
+      comment: options?.comment,
+      commentFile: options?.commentFile,
+      userName: assigneeName,
+      commandName: "needs-human",
+      forceDuplicate: options?.forceDuplicate,
+    }, {
+      targetState: "todo",
+      commentMode: "optional-with-warning",
+      clearDelegate: true,
+      assigneeName: (args) => args.userName,
+      commentFirst: true,
+    });
+  } finally {
+    setProxyIntent(undefined);
+  }
 }
 
 /**
@@ -620,4 +628,250 @@ export async function parkWork(
     clearDelegate: true,
     clearAssignee: true,
   });
+}
+
+// --- Dev-impl workflow semantic verbs (AI-1362) ---
+// These 8 verbs map to the transitions in dev-impl.yaml. Each sets the
+// x-openclaw-linear-intent header so the proxy/gate can enforce legal moves.
+// request-changes and reject require a --comment (the proxy carries feedback
+// via the comment body; no separate header or --category flag).
+
+/**
+ * linear accept <id>
+ *
+ * Accept a ticket from intake into implementation.
+ * dev-impl: intake → implementation (steward action)
+ */
+export async function accept(
+  issueId: string,
+  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+): Promise<SemanticResult> {
+  setProxyIntent("accept");
+  try {
+    return await executeTransition("accept", {
+      issueId,
+      comment: options?.comment,
+      commentFile: options?.commentFile,
+      forceDuplicate: options?.forceDuplicate,
+    }, {
+      targetState: "doing",
+      commentMode: "optional",
+    });
+  } finally {
+    setProxyIntent(undefined);
+  }
+}
+
+/**
+ * linear submit <id>
+ *
+ * Submit implementation work for code review.
+ * dev-impl: implementation → code-review (dev action)
+ */
+export async function submit(
+  issueId: string,
+  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+): Promise<SemanticResult> {
+  setProxyIntent("submit");
+  try {
+    return await executeTransition("submit", {
+      issueId,
+      comment: options?.comment,
+      commentFile: options?.commentFile,
+      forceDuplicate: options?.forceDuplicate,
+    }, {
+      targetState: "thinking",
+      commentMode: "optional",
+    });
+  } finally {
+    setProxyIntent(undefined);
+  }
+}
+
+/**
+ * linear approve <id>
+ *
+ * Approve after code review, advancing to deployment.
+ * dev-impl: code-review → deployment (code-review action)
+ */
+export async function approve(
+  issueId: string,
+  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+): Promise<SemanticResult> {
+  setProxyIntent("approve");
+  try {
+    return await executeTransition("approve", {
+      issueId,
+      comment: options?.comment,
+      commentFile: options?.commentFile,
+      forceDuplicate: options?.forceDuplicate,
+    }, {
+      targetState: "doing",
+      commentMode: "optional",
+    });
+  } finally {
+    setProxyIntent(undefined);
+  }
+}
+
+/**
+ * linear request-changes <id>
+ *
+ * Request changes during code review, sending back to implementation.
+ * dev-impl: code-review → implementation (code-review action)
+ * Requires --comment (feedback must be carried).
+ */
+export async function requestChanges(
+  issueId: string,
+  options: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+): Promise<SemanticResult> {
+  const body = await (async () => {
+    if (options.commentFile) {
+      try {
+        return (await fs.readFile(options.commentFile, "utf8")).trim();
+      } catch {
+        return "";
+      }
+    }
+    return options.comment?.trim() ?? "";
+  })();
+  if (!body) {
+    throw new Error("request-changes requires --comment <text>.");
+  }
+  setProxyIntent("request-changes");
+  try {
+    return await executeTransition("requestChanges", {
+      issueId,
+      comment: body,
+      forceDuplicate: options.forceDuplicate,
+    }, {
+      targetState: "doing",
+      commentMode: "required",
+    });
+  } finally {
+    setProxyIntent(undefined);
+  }
+}
+
+/**
+ * linear deploy <id>
+ *
+ * Deploy after approval, completing the workflow.
+ * dev-impl: deployment → done (deployment action, requires deploy:execute capability)
+ */
+export async function deploy(
+  issueId: string,
+  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+): Promise<SemanticResult> {
+  setProxyIntent("deploy");
+  try {
+    return await executeTransition("deploy", {
+      issueId,
+      comment: options?.comment,
+      commentFile: options?.commentFile,
+      forceDuplicate: options?.forceDuplicate,
+    }, {
+      targetState: "done",
+      commentMode: "optional",
+      clearDelegate: true,
+      clearAssignee: true,
+    });
+  } finally {
+    setProxyIntent(undefined);
+  }
+}
+
+/**
+ * linear reject <id>
+ *
+ * Reject during deployment, sending back to implementation.
+ * dev-impl: deployment → implementation (deployment action)
+ * Requires --comment (feedback must be carried).
+ */
+export async function reject(
+  issueId: string,
+  options: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+): Promise<SemanticResult> {
+  const body = await (async () => {
+    if (options.commentFile) {
+      try {
+        return (await fs.readFile(options.commentFile, "utf8")).trim();
+      } catch {
+        return "";
+      }
+    }
+    return options.comment?.trim() ?? "";
+  })();
+  if (!body) {
+    throw new Error("reject requires --comment <text>.");
+  }
+  setProxyIntent("reject");
+  try {
+    return await executeTransition("reject", {
+      issueId,
+      comment: body,
+      forceDuplicate: options.forceDuplicate,
+    }, {
+      targetState: "doing",
+      commentMode: "required",
+    });
+  } finally {
+    setProxyIntent(undefined);
+  }
+}
+
+/**
+ * linear escape <id>
+ *
+ * Break-glass: steward escapes the ticket out of the workflow.
+ * dev-impl: any state → escape terminal (steward action)
+ */
+export async function escape(
+  issueId: string,
+  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+): Promise<SemanticResult> {
+  setProxyIntent("escape");
+  try {
+    return await executeTransition("escape", {
+      issueId,
+      comment: options?.comment,
+      commentFile: options?.commentFile,
+      forceDuplicate: options?.forceDuplicate,
+    }, {
+      targetState: "backlog",
+      commentMode: "optional",
+      clearDelegate: true,
+      clearAssignee: true,
+    });
+  } finally {
+    setProxyIntent(undefined);
+  }
+}
+
+/**
+ * linear demote <id>
+ *
+ * Demote a ticket out of the dev-impl workflow entirely.
+ * dev-impl: intake → __ad_hoc__ (steward action, ticket leaves workflow)
+ */
+export async function demote(
+  issueId: string,
+  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+): Promise<SemanticResult> {
+  setProxyIntent("demote");
+  try {
+    return await executeTransition("demote", {
+      issueId,
+      comment: options?.comment,
+      commentFile: options?.commentFile,
+      forceDuplicate: options?.forceDuplicate,
+    }, {
+      targetState: "backlog",
+      commentMode: "optional",
+      clearDelegate: true,
+      clearAssignee: true,
+    });
+  } finally {
+    setProxyIntent(undefined);
+  }
 }
