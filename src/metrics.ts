@@ -91,14 +91,14 @@ export async function fetchMetrics(
   const qs = new URLSearchParams(params).toString();
   const url = `${adminBase}/api/observations/metrics${qs ? `?${qs}` : ""}`;
 
-  // The admin API uses either the Linear API key or the admin secret.
-  // Use the same auth the CLI already has.
-  const apiKey = ensureApiKey();
+  // The admin API uses ADMIN_SECRET via Bearer auth (same as the dashboard).
+  // Prefer the dedicated env var; fall back to LINEAR_API_KEY for local dev.
+  const adminSecret = process.env.LINEAR_ADMIN_SECRET ?? ensureApiKey();
 
   try {
     const response = await axios.get<MetricRollup>(url, {
       headers: {
-        Authorization: apiKey,
+        Authorization: `Bearer ${adminSecret}`,
         "Content-Type": "application/json",
       },
       timeout: 10_000,
