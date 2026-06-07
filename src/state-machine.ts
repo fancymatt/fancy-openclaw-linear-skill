@@ -419,6 +419,7 @@ export async function executeTransition(
   // 5. Resolve delegate
   let delegateId: string | null | undefined = undefined; // undefined = don't touch, null = clear
   let delegateName: string | null = null;
+  let delegateIsAppUser = false;
   if (config.delegateToSelf) {
     const self = await getSelfUser();
     delegateId = self.id;
@@ -434,6 +435,7 @@ export async function executeTransition(
       const user = await resolveUserWithHints(name, args.commandName);
       delegateId = user.id;
       delegateName = user.name;
+      delegateIsAppUser = !!user.app;
     }
   }
 
@@ -451,6 +453,19 @@ export async function executeTransition(
       assigneeId = user.id;
       assigneeNameResult = user.name;
     }
+  }
+
+  // Linear API constraint: when delegating to an app/bot user the mutation
+  // silently drops the delegate write unless assigneeId equals the delegateId.
+  // Mirror assigneeId = delegateId to satisfy the constraint. This overrides
+  // clearAssignee when the target is a bot, since the bot's "assigned" view is
+  // not a human-facing inbox and the semantic cost is acceptable.
+  if (delegateId && delegateIsAppUser) {
+    process.stderr.write(
+      `Info: delegate "${delegateName}" is an app user; setting assigneeId = delegateId to satisfy Linear API constraint (AI-1395).\n`
+    );
+    assigneeId = delegateId;
+    assigneeNameResult = delegateName;
   }
 
   // 7. Post comment (before update if commentFirst)
@@ -509,16 +524,22 @@ export async function executeTransition(
     }
   }
 
-  // 11. Build result
+  // 11. Build result — use actual server state from updatedIssue, not intended values,
+  //     so silent rejections (e.g. app-user delegate constraint) surface immediately.
+  if (delegateId && updatedIssue.delegate?.id !== delegateId) {
+    process.stderr.write(
+      `Warning: delegate write did not persist. Expected "${delegateName}", ` +
+      `got "${updatedIssue.delegate?.name ?? "null"}". ` +
+      `If the target is an app user, ensure the Linear API constraint is satisfied (AI-1395).\n`
+    );
+  }
+
   const result: TransitionResult = {
     command: commandName,
     issueId: issue.identifier,
     state: state.name,
-    delegate: config.delegateToSelf ? delegateName
-      : config.clearDelegate ? null
-      : delegateName ?? issue.delegate?.name ?? null,
-    assignee: config.clearAssignee ? null
-      : assigneeNameResult ?? issue.assignee?.name ?? null,
+    delegate: updatedIssue.delegate?.name ?? null,
+    assignee: updatedIssue.assignee?.name ?? null,
     commentPosted,
     duplicateBlocked,
     duplicateDetails,

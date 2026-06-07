@@ -180,6 +180,23 @@ describe("dev-impl semantic verbs", () => {
       await accept("AI-200");
       expect(mockAddComment).not.toHaveBeenCalled();
     });
+
+    it("mirrors assigneeId = delegateId when target is an app user (AI-1395)", async () => {
+      mockResolveUserWithHints.mockResolvedValueOnce({ id: "user-igor", name: "Igor (Back End Dev)", app: true });
+      await accept("AI-200", "Igor (Back End Dev)");
+      expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", expect.objectContaining({
+        delegateId: "user-igor",
+        assigneeId: "user-igor",
+      }));
+    });
+
+    it("does NOT mirror assigneeId when target is a regular (non-app) user", async () => {
+      mockResolveUserWithHints.mockResolvedValueOnce({ id: "user-charles", name: "Charles (CTO)", app: false });
+      await accept("AI-200", "Charles (CTO)");
+      const call = mockUpdateIssue.mock.calls[0][1] as any;
+      expect(call.delegateId).toBe("user-charles");
+      expect(call.assigneeId).toBeUndefined();
+    });
   });
 
   describe("submit", () => {
