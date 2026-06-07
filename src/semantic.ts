@@ -661,6 +661,8 @@ export async function accept(
     }, {
       targetState: "doing",
       commentMode: "optional",
+      addLabels: ["state:implementation"],
+      removeLabelsIfPresent: ["state:intake"],
       ...(target ? { delegateName: (args: TransitionArgs) => args.userName } : {}),
     });
   } finally {
@@ -692,6 +694,8 @@ export async function submit(
     }, {
       targetState: "thinking",
       commentMode: "optional",
+      addLabels: ["state:code-review"],
+      removeLabelsIfPresent: ["state:implementation"],
       ...(target ? { delegateName: (args: TransitionArgs) => args.userName } : {}),
     });
   } finally {
@@ -720,6 +724,8 @@ export async function approve(
     }, {
       targetState: "doing",
       commentMode: "optional",
+      addLabels: ["state:deployment"],
+      removeLabelsIfPresent: ["state:code-review"],
     });
   } finally {
     setProxyIntent(undefined);
@@ -759,6 +765,8 @@ export async function requestChanges(
     }, {
       targetState: "doing",
       commentMode: "required",
+      addLabels: ["state:implementation"],
+      removeLabelsIfPresent: ["state:code-review"],
     });
   } finally {
     setProxyIntent(undefined);
@@ -787,6 +795,7 @@ export async function deploy(
       commentMode: "optional",
       clearDelegate: true,
       clearAssignee: true,
+      removeLabelsIfPresent: ["state:deployment"],
     });
   } finally {
     setProxyIntent(undefined);
@@ -826,6 +835,8 @@ export async function reject(
     }, {
       targetState: "doing",
       commentMode: "required",
+      addLabels: ["state:implementation"],
+      removeLabelsIfPresent: ["state:deployment"],
     });
   } finally {
     setProxyIntent(undefined);
@@ -854,6 +865,7 @@ export async function escape(
       commentMode: "optional",
       clearDelegate: true,
       clearAssignee: true,
+      removeLabelsIfPresent: ["state:intake", "state:implementation", "state:code-review", "state:deployment"],
     });
   } finally {
     setProxyIntent(undefined);
@@ -882,6 +894,7 @@ export async function demote(
       commentMode: "optional",
       clearDelegate: true,
       clearAssignee: true,
+      removeLabelsIfPresent: ["state:intake", "wf:dev-impl"],
     });
   } finally {
     setProxyIntent(undefined);
