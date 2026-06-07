@@ -640,7 +640,22 @@ describe("handoffWork", () => {
       });
     });
 
-    it("strips state:implementation label on dev-impl tickets to prevent column/label divergence (AI-1395)", async () => {
+    it("omits assigneeId (does NOT pass null) when delegating to an app user — avoids silent delegate drop (AI-1395)", async () => {
+    mockResolveUserWithHints.mockImplementation(async (name: string) => {
+      if (name === "Igor (Back End Dev)") return { id: "user-igor", name: "Igor (Back End Dev)", app: true };
+      return { id: "user-charles", name: "Charles (CTO)" };
+    });
+    const spy = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    await handoffWork("AI-100", "Igor (Back End Dev)", { comment: "Your turn." });
+    spy.mockRestore();
+    const call = mockUpdateIssue.mock.calls[0][1] as any;
+    // delegateId must be present
+    expect(call.delegateId).toBe("user-igor");
+    // assigneeId must be ABSENT (undefined), not null — passing null silently drops app-user delegates
+    expect(call.assigneeId).toBeUndefined();
+  });
+
+  it("strips state:implementation label on dev-impl tickets to prevent column/label divergence (AI-1395)", async () => {
       mockGetIssue.mockResolvedValue({
         ...baseIssue,
         labels: [{ id: "lbl-impl", name: "state:implementation", color: "#0f0" }],

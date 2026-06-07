@@ -455,17 +455,18 @@ export async function executeTransition(
     }
   }
 
-  // Linear API constraint: when delegating to an app/bot user the mutation
-  // silently drops the delegate write unless assigneeId equals the delegateId.
-  // Mirror assigneeId = delegateId to satisfy the constraint. This overrides
-  // clearAssignee when the target is a bot, since the bot's "assigned" view is
-  // not a human-facing inbox and the semantic cost is acceptable.
+  // Linear API constraint for app/bot user delegates (AI-1395):
+  //   • { delegateId: app_user, assigneeId: null }    → delegate silently dropped
+  //   • { delegateId: app_user, assigneeId: app_user } → explicit API error
+  //   • { delegateId: app_user }                      → delegate persists
+  // When the delegate is an app user, omit assigneeId entirely so Linear
+  // accepts the write. This overrides clearAssignee for app-user delegates.
   if (delegateId && delegateIsAppUser) {
     process.stderr.write(
-      `Info: delegate "${delegateName}" is an app user; setting assigneeId = delegateId to satisfy Linear API constraint (AI-1395).\n`
+      `Info: delegate "${delegateName}" is an app user; omitting assigneeId from mutation to satisfy Linear API constraint (AI-1395).\n`
     );
-    assigneeId = delegateId;
-    assigneeNameResult = delegateName;
+    assigneeId = undefined;
+    assigneeNameResult = null;
   }
 
   // 7. Post comment (before update if commentFirst)

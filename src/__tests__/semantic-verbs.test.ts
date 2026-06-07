@@ -181,21 +181,21 @@ describe("dev-impl semantic verbs", () => {
       expect(mockAddComment).not.toHaveBeenCalled();
     });
 
-    it("mirrors assigneeId = delegateId when target is an app user (AI-1395)", async () => {
+    it("omits assigneeId entirely when target is an app user (AI-1395)", async () => {
       mockResolveUserWithHints.mockResolvedValueOnce({ id: "user-igor", name: "Igor (Back End Dev)", app: true });
       await accept("AI-200", "Igor (Back End Dev)");
-      expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", expect.objectContaining({
-        delegateId: "user-igor",
-        assigneeId: "user-igor",
-      }));
+      const call = mockUpdateIssue.mock.calls[0][1] as any;
+      expect(call.delegateId).toBe("user-igor");
+      // assigneeId must be absent (undefined), not null — Linear rejects { delegateId: app_user, assigneeId: app_user }
+      expect(call.assigneeId).toBeUndefined();
     });
 
-    it("does NOT mirror assigneeId when target is a regular (non-app) user", async () => {
+    it("does NOT omit assigneeId when target is a regular (non-app) user", async () => {
       mockResolveUserWithHints.mockResolvedValueOnce({ id: "user-charles", name: "Charles (CTO)", app: false });
       await accept("AI-200", "Charles (CTO)");
       const call = mockUpdateIssue.mock.calls[0][1] as any;
       expect(call.delegateId).toBe("user-charles");
-      expect(call.assigneeId).toBeUndefined();
+      expect(call.assigneeId).toBeUndefined(); // accept has no clearAssignee so assigneeId is omitted regardless
     });
   });
 
