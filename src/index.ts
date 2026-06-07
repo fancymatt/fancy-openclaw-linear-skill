@@ -18,6 +18,7 @@ import { deleteIssue, deleteComment } from "./delete";
 import { listLabels, addLabels, removeLabels } from "./labels";
 import { searchIssues } from "./search";
 import { linearTest } from "./test";
+import { runMetrics } from "./metrics";
 import { linearGraphQL, LinearApiError } from "./client";
 import { normalizeCliDescription, relativeTime, wrapText } from "./utils";
 import { ObserveResult } from "./semantic";
@@ -966,6 +967,21 @@ async function main(): Promise<void> {
     .description("Demote a ticket out of dev-impl workflow (dev-impl: intake → ad-hoc)")
     .action(async (id: string, options: { comment?: string; commentFile?: string; forceDuplicate?: boolean }) => {
       await runCommand(async () => demote(id, options), program.opts<{ human?: boolean }>().human);
+    });
+
+  // P4-2 — metric aggregation: surface ranked reason-code counts per step
+  program.command("metrics")
+    .option("--workflow <workflow>", "Filter by workflow (e.g. dev-impl)")
+    .option("--step <step>", "Filter by step (e.g. code-review)")
+    .option("--reason-code <code>", "Filter by reason code")
+    .option("--since <since>", "Since timestamp or duration (e.g. 30d, 7d, 24h)")
+    .option("--until <until>", "Until ISO timestamp")
+    .option("--include-body", "Include per-body (agent) breakdown")
+    .option("--threshold <n>", "Flag buckets crossing this count", parseInt)
+    .option("--json", "Output raw JSON instead of human-readable table")
+    .description("Metric aggregation over reject feedback observations (P4-2)")
+    .action(async (options: { workflow?: string; step?: string; reasonCode?: string; since?: string; until?: string; includeBody?: boolean; threshold?: number; json?: boolean }) => {
+      await runMetrics(options);
     });
 
   program.command("managing")
