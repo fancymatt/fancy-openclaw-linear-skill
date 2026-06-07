@@ -89,15 +89,17 @@ export async function fetchMetrics(
   const qs = new URLSearchParams(params).toString();
   const url = `${adminBase}/api/observations/metrics${qs ? `?${qs}` : ""}`;
 
-  // The admin API uses ADMIN_SECRET via Bearer auth (same as the dashboard).
-  // Prefer the dedicated env var; fall back to LINEAR_API_KEY for local dev.
-  // The connector admin GET endpoints are unauthenticated (trusted-network).
-  // No Authorization header needed for GET routes.
+  // Authenticate with the connector admin API via x-admin-secret header.
+  const adminSecret = process.env.LINEAR_ADMIN_SECRET;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (adminSecret) {
+    headers["x-admin-secret"] = adminSecret;
+  }
   try {
     const response = await axios.get<MetricRollup>(url, {
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       timeout: 10_000,
     });
     return response.data;

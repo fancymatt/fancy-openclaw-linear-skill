@@ -130,7 +130,7 @@ function envVarCandidates(): string[] {
   ];
 }
 
-const EXTRA_ENV_KEYS = ["LINEAR_PROXY_URL"] as const;
+const EXTRA_ENV_KEYS = ["LINEAR_PROXY_URL", "LINEAR_ADMIN_SECRET"] as const;
 
 /**
  * Load supplemental LINEAR_* env vars (e.g. LINEAR_PROXY_URL) from the
