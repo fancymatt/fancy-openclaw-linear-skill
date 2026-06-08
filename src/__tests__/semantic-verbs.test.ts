@@ -206,7 +206,6 @@ describe("dev-impl semantic verbs", () => {
       expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", {
         stateId: "state-thinking",
         addedLabelIds: ["label-code-review"],
-        removedLabelIds: ["label-intake", "label-implementation", "label-deployment"],
       });
       expect(result.command).toBe("submit");
     });
@@ -230,7 +229,6 @@ describe("dev-impl semantic verbs", () => {
       expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", {
         stateId: "state-doing",
         addedLabelIds: ["label-deployment"],
-        removedLabelIds: ["label-intake", "label-implementation", "label-code-review"],
       });
       expect(result.command).toBe("approve");
     });
@@ -255,7 +253,6 @@ describe("dev-impl semantic verbs", () => {
       expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", {
         stateId: "state-doing",
         addedLabelIds: ["label-implementation"],
-        removedLabelIds: ["label-intake", "label-code-review", "label-deployment"],
       });
       expect(result.command).toBe("requestChanges");
     });
@@ -294,14 +291,13 @@ describe("dev-impl semantic verbs", () => {
     it("sets intent to 'deploy', transitions to done, clears ownership (no addedLabelIds — done is terminal)", async () => {
       const result = await deploy("AI-200");
       expectIntentSetAndCleared("deploy");
-      // baseIssue has no labels, but removeLabelsIfPresent always resolves and sends
-      // removal IDs (harmless no-op for labels not on the issue) (AI-1389).
+      // baseIssue has no labels — removedLabelIds is filtered to only present labels,
+      // so it's empty and not sent.
       // done is a terminal state with no state:* label, so no addedLabelIds either.
       expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", {
         stateId: "state-done",
         delegateId: null,
         assigneeId: null,
-        removedLabelIds: ["label-intake", "label-implementation", "label-code-review", "label-deployment"],
       });
       expect(result.command).toBe("deploy");
       expect(result.state).toBe("Done");
@@ -314,7 +310,7 @@ describe("dev-impl semantic verbs", () => {
       });
       await deploy("AI-200");
       expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", expect.objectContaining({
-        removedLabelIds: ["label-intake", "label-implementation", "label-code-review", "label-deployment"],
+        removedLabelIds: ["label-deployment"],
       }));
     });
 
@@ -338,7 +334,6 @@ describe("dev-impl semantic verbs", () => {
       expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", {
         stateId: "state-doing",
         addedLabelIds: ["label-implementation"],
-        removedLabelIds: ["label-intake", "label-code-review", "label-deployment"],
       });
       expect(result.command).toBe("reject");
     });
@@ -384,7 +379,7 @@ describe("dev-impl semantic verbs", () => {
         stateId: "state-backlog",
         delegateId: null,
         assigneeId: null,
-        removedLabelIds: ["label-intake", "label-implementation", "label-code-review", "label-deployment"],
+        removedLabelIds: ["label-code-review"],
       }));
       expect(result.command).toBe("escape");
       expect(result.state).toBe("Backlog");
@@ -417,13 +412,12 @@ describe("dev-impl semantic verbs", () => {
     it("sets intent to 'demote', transitions to backlog, clears ownership", async () => {
       const result = await demote("AI-200");
       expectIntentSetAndCleared("demote");
-      // baseIssue has no labels, but removeLabelsIfPresent always resolves and sends
-      // removal IDs (harmless no-op for labels not on the issue) (AI-1389).
+      // baseIssue has no labels — removedLabelIds is filtered to only present labels,
+      // so it's empty and not sent.
       expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", {
         stateId: "state-backlog",
         delegateId: null,
         assigneeId: null,
-        removedLabelIds: ["label-intake", "label-implementation", "label-code-review", "label-deployment", "label-wf-dev-impl"],
       });
       expect(result.command).toBe("demote");
       expect(result.state).toBe("Backlog");
@@ -465,7 +459,7 @@ describe("dev-impl semantic verbs", () => {
       expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", {
         stateId: "state-doing",
         addedLabelIds: ["label-deployment"],
-        removedLabelIds: ["label-intake", "label-implementation", "label-code-review"],
+        removedLabelIds: ["label-code-review"],
       });
     });
 
@@ -478,7 +472,7 @@ describe("dev-impl semantic verbs", () => {
       expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", {
         stateId: "state-thinking",
         addedLabelIds: ["label-code-review"],
-        removedLabelIds: ["label-intake", "label-implementation", "label-deployment"],
+        removedLabelIds: ["label-implementation"],
       });
     });
 
@@ -491,7 +485,7 @@ describe("dev-impl semantic verbs", () => {
       expect(mockUpdateIssue).toHaveBeenCalledWith("AI-200", {
         stateId: "state-doing",
         addedLabelIds: ["label-implementation"],
-        removedLabelIds: ["label-intake", "label-code-review", "label-deployment"],
+        removedLabelIds: ["label-deployment"],
       });
     });
   });
