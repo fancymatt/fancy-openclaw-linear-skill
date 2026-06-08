@@ -676,6 +676,36 @@ describe("handoffWork", () => {
         removedLabelIds: ["lbl-impl"],
       });
     });
+
+  it("succeeds when ticket is missing some candidate removal labels — no validation error (AI-1404)", async () => {
+    // Ticket only has state:intake; handoff config wants to remove state:* and gate:* labels.
+    // Linear throws if removedLabelIds includes IDs not on the issue, so the name-filter must
+    // drop any labels absent from the issue before resolving IDs.
+    mockGetIssue.mockResolvedValue({
+      ...baseIssue,
+      labels: [{ id: "lbl-intake", name: "state:intake", color: "#00f" }],
+    });
+    mockResolveLabelIds.mockImplementation(async (_teamId: string, names: string[]) => {
+      const map: Record<string, string> = {
+        "state:intake": "lbl-intake",
+        "state:implementation": "lbl-impl",
+        "state:code-review": "lbl-cr",
+        "state:deployment": "lbl-deploy",
+        "gate:agent-review": "lbl-agent-review",
+        "gate:human-review": "lbl-human-review",
+      };
+      return names.map((n) => map[n.toLowerCase()] ?? `lbl-unknown-${n}`);
+    });
+    await handoffWork("AI-100", "Charles (CTO)", { comment: "Only intake label present." });
+    const call = mockUpdateIssue.mock.calls[0][1] as any;
+    // Only state:intake was on the issue, so only its ID should appear in removedLabelIds
+    expect(call.removedLabelIds).toEqual(["lbl-intake"]);
+    // resolveLabelIds must NOT have been called with the absent labels
+    const resolveCall = mockResolveLabelIds.mock.calls[0];
+    expect(resolveCall[1]).not.toContain("state:implementation");
+    expect(resolveCall[1]).not.toContain("state:code-review");
+    expect(resolveCall[1]).not.toContain("state:deployment");
+  });
   });
 });
 

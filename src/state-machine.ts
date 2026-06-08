@@ -400,6 +400,8 @@ export async function executeTransition(
   if (config.addLabels?.length) {
     addedLabelIds = await resolveLabelIds(teamId, config.addLabels);
   }
+  // AI-1404: Linear does NOT silently no-op removedLabelIds for labels absent from the issue —
+  // it throws a validation error. Filter by names present on the issue before resolving IDs.
   if (config.removeLabelsIfPresent?.length) {
     const present = new Set((issue.labels ?? []).map((l) => l.name.toLowerCase()));
     const toRemove = config.removeLabelsIfPresent.filter((n) => present.has(n.toLowerCase()));
