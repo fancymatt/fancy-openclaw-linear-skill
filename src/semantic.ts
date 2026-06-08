@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import {
   executeTransition,
   findRecentDuplicate,
+  checkCommentRateLimit,
   getInlineCommentSafetyWarning,
   type DuplicateMatch,
   type TransitionArgs,
@@ -74,6 +75,9 @@ export interface SemanticResult {
   /** True when a near-duplicate comment was detected and the post was refused. */
   duplicateBlocked: boolean;
   duplicateDetails: { existingCommentId: string; similarity: number; ageSeconds: number } | null;
+  /** True when the per-issue per-agent comment rate limit was exceeded. */
+  rateLimitBlocked: boolean;
+  rateLimitDetails: { recentCount: number; maxAllowed: number; windowSeconds: number } | null;
   commentId: string | null;
   commentUrl: string | null;
   commentCreatedAt: string | null;
@@ -398,6 +402,8 @@ export interface NoteResult {
   commentPosted: boolean;
   duplicateBlocked: boolean;
   duplicateDetails: { existingCommentId: string; similarity: number; ageSeconds: number } | null;
+  rateLimitBlocked: boolean;
+  rateLimitDetails: { recentCount: number; maxAllowed: number; windowSeconds: number } | null;
   commentUrl: string | null;
   commentCreatedAt: string | null;
   commentBodyLength: number | null;
@@ -428,6 +434,23 @@ export async function note(
     throw new Error("note requires a non-empty comment. Use --comment or --comment-file.");
   }
   const issue = await getIssue(issueId);
+  // Rate limit check (independent of similarity)
+  const rateHit = options.forceDuplicate ? null : await checkCommentRateLimit(issue.id);
+  if (rateHit) {
+    return {
+      issueId: issue.identifier,
+      commentId: null,
+      commentPosted: false,
+      duplicateBlocked: false,
+      duplicateDetails: null,
+      rateLimitBlocked: true,
+      rateLimitDetails: { recentCount: rateHit.recentCount, maxAllowed: rateHit.maxAllowed, windowSeconds: rateHit.windowSeconds },
+      commentUrl: null,
+      commentCreatedAt: null,
+      commentBodyLength: null,
+      bodyFile: null,
+    };
+  }
   const dup: DuplicateMatch | null = options.forceDuplicate ? null : await findRecentDuplicate(issue.id, body);
   if (dup) {
     return {
@@ -436,6 +459,8 @@ export async function note(
       commentPosted: false,
       duplicateBlocked: true,
       duplicateDetails: { existingCommentId: dup.id, similarity: dup.similarity, ageSeconds: dup.ageSeconds },
+      rateLimitBlocked: false,
+      rateLimitDetails: null,
       commentUrl: null,
       commentCreatedAt: dup.createdAt,
       commentBodyLength: Buffer.byteLength(body, "utf8"),
@@ -449,6 +474,8 @@ export async function note(
     commentPosted: true,
     duplicateBlocked: false,
     duplicateDetails: null,
+    rateLimitBlocked: false,
+    rateLimitDetails: null,
     commentUrl: commentResult.commentUrl,
     commentCreatedAt: commentResult.commentCreatedAt,
     commentBodyLength: commentResult.commentBodyLength,
@@ -484,6 +511,8 @@ export async function undelegate(
 
   let commentPosted = false;
   let duplicateBlocked = false;
+  let rateLimitBlocked = false;
+  let rateLimitDetails: SemanticResult["rateLimitDetails"] = null;
   let duplicateDetails: SemanticResult["duplicateDetails"] = null;
   let commentId: string | null = null;
   let commentUrl: string | null = null;
@@ -492,21 +521,28 @@ export async function undelegate(
   let bodyFile: string | null = null;
 
   if (body) {
-    const dup = options?.forceDuplicate ? null : await findRecentDuplicate(issue.id, body);
-    if (dup) {
-      duplicateBlocked = true;
-      duplicateDetails = { existingCommentId: dup.id, similarity: dup.similarity, ageSeconds: dup.ageSeconds };
-      commentId = dup.id;
-      commentCreatedAt = dup.createdAt;
-      commentBodyLength = Buffer.byteLength(body, "utf8");
+    // Rate limit check (independent of similarity)
+    const rateHit = options?.forceDuplicate ? null : await checkCommentRateLimit(issue.id);
+    if (rateHit) {
+      rateLimitBlocked = true;
+      rateLimitDetails = { recentCount: rateHit.recentCount, maxAllowed: rateHit.maxAllowed, windowSeconds: rateHit.windowSeconds };
     } else {
-      const result = await addComment(issue.id, body);
-      commentPosted = true;
-      commentId = result.commentId;
-      commentUrl = result.commentUrl;
-      commentCreatedAt = result.commentCreatedAt;
-      commentBodyLength = result.commentBodyLength;
-      bodyFile = result.bodyFile ?? null;
+      const dup = options?.forceDuplicate ? null : await findRecentDuplicate(issue.id, body);
+      if (dup) {
+        duplicateBlocked = true;
+        duplicateDetails = { existingCommentId: dup.id, similarity: dup.similarity, ageSeconds: dup.ageSeconds };
+        commentId = dup.id;
+        commentCreatedAt = dup.createdAt;
+        commentBodyLength = Buffer.byteLength(body, "utf8");
+      } else {
+        const result = await addComment(issue.id, body);
+        commentPosted = true;
+        commentId = result.commentId;
+        commentUrl = result.commentUrl;
+        commentCreatedAt = result.commentCreatedAt;
+        commentBodyLength = result.commentBodyLength;
+        bodyFile = result.bodyFile ?? null;
+      }
     }
   }
 
@@ -519,6 +555,8 @@ export async function undelegate(
     assignee: null,
     commentPosted,
     duplicateBlocked,
+    rateLimitBlocked,
+    rateLimitDetails,
     duplicateDetails,
     commentId,
     commentUrl,

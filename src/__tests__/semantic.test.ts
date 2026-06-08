@@ -549,6 +549,8 @@ describe("handoffWork", () => {
       commentPosted: true,
       duplicateBlocked: false,
       duplicateDetails: null,
+      rateLimitBlocked: false,
+      rateLimitDetails: null,
       commentId: "comment-uuid",
       commentUrl: "https://linear.app/test/comment/comment-uuid",
       commentCreatedAt: "2026-04-26T12:00:00Z",
@@ -825,6 +827,8 @@ describe("needsHuman", () => {
       commentPosted: true,
       duplicateBlocked: false,
       duplicateDetails: null,
+      rateLimitBlocked: false,
+      rateLimitDetails: null,
       commentId: "comment-uuid",
       commentUrl: "https://linear.app/test/comment/comment-uuid",
       commentCreatedAt: "2026-04-26T12:00:00Z",
@@ -860,7 +864,7 @@ describe("note", () => {
     const result = await note("AI-100", { comment: "Follow-up note." });
     expect(mockAddComment).toHaveBeenCalledWith("issue-1", "Follow-up note.");
     expect(mockUpdateIssue).not.toHaveBeenCalled();
-    expect(result).toEqual({ issueId: "AI-100", commentPosted: true, duplicateBlocked: false, duplicateDetails: null, commentId: "comment-uuid", commentUrl: "https://linear.app/test/comment/comment-uuid", commentCreatedAt: "2026-04-26T12:00:00Z", commentBodyLength: 4, bodyFile: null });
+    expect(result).toEqual({ issueId: "AI-100", commentPosted: true, duplicateBlocked: false, duplicateDetails: null, rateLimitBlocked: false, rateLimitDetails: null, commentId: "comment-uuid", commentUrl: "https://linear.app/test/comment/comment-uuid", commentCreatedAt: "2026-04-26T12:00:00Z", commentBodyLength: 4, bodyFile: null });
   });
 
   it("works on a Done ticket", async () => {

@@ -22,6 +22,18 @@ const COMMENT_DEDUP_WINDOW_SECONDS = parseInt(process.env.LINEAR_COMMENT_DEDUP_W
 const COMMENT_SIMILARITY_THRESHOLD = parseFloat(process.env.LINEAR_COMMENT_SIMILARITY_THRESHOLD ?? "0.80");
 
 /**
+ * Maximum comments a single agent may post on one issue within the rate-limit window.
+ * Configurable via LINEAR_COMMENT_RATE_LIMIT_MAX env var.
+ */
+const COMMENT_RATE_LIMIT_MAX = parseInt(process.env.LINEAR_COMMENT_RATE_LIMIT_MAX ?? "3", 10);
+
+/**
+ * Rolling window (seconds) for the per-issue per-agent comment rate limit.
+ * Configurable via LINEAR_COMMENT_RATE_LIMIT_WINDOW_SECONDS env var.
+ */
+const COMMENT_RATE_LIMIT_WINDOW_SECONDS = parseInt(process.env.LINEAR_COMMENT_RATE_LIMIT_WINDOW_SECONDS ?? "300", 10);
+
+/**
  * Strip HTML/Prosemirror markup for body comparison.
  */
 function stripMarkup(text: string): string {
@@ -63,6 +75,55 @@ export interface DuplicateMatch {
   createdAt: string;
   similarity: number;
   ageSeconds: number;
+}
+
+/**
+ * Check whether the authenticated user has exceeded the per-issue comment rate
+ * limit within the rolling window. Returns the count of recent self-comments if
+ * over the limit, null otherwise. Independent of comment body similarity.
+ * Best-effort: failures return null (proceed with post).
+ */
+export interface RateLimitResult {
+  /** Number of comments by self on this issue within the rate-limit window */
+  recentCount: number;
+  /** Max allowed within the window */
+  maxAllowed: number;
+  /** Window in seconds */
+  windowSeconds: number;
+  /** ISO timestamp of the most recent self-comment within the window */
+  mostRecentAt: string;
+}
+
+export async function checkCommentRateLimit(
+  issueId: string
+): Promise<RateLimitResult | null> {
+  try {
+    const self = await getSelfUser();
+    const comments = await getComments(issueId, false);
+    const cutoffMs = COMMENT_RATE_LIMIT_WINDOW_SECONDS * 1000;
+    const now = Date.now();
+    let recentCount = 0;
+    let mostRecentAt = "";
+    // Count self-comments within the window (comments sorted ascending)
+    for (let i = comments.length - 1; i >= 0; i--) {
+      const c = comments[i];
+      if (!c.createdAt || !c.user) continue;
+      const ageMs = now - new Date(c.createdAt).getTime();
+      if (ageMs > cutoffMs) break;
+      if (c.user.id !== self.id) continue;
+      recentCount++;
+      if (!mostRecentAt) mostRecentAt = c.createdAt;
+    }
+    if (recentCount >= COMMENT_RATE_LIMIT_MAX) {
+      process.stderr.write(
+        `RATE_LIMIT_BLOCKED: ${recentCount} comments in ${COMMENT_RATE_LIMIT_WINDOW_SECONDS}s window (max ${COMMENT_RATE_LIMIT_MAX})\n`
+      );
+      return { recentCount, maxAllowed: COMMENT_RATE_LIMIT_MAX, windowSeconds: COMMENT_RATE_LIMIT_WINDOW_SECONDS, mostRecentAt };
+    }
+  } catch {
+    // Best-effort — if we can't check, proceed with post
+  }
+  return null;
 }
 
 export async function findRecentDuplicate(
@@ -317,6 +378,8 @@ export async function executeTransition(
     assignee: issue.assignee?.name ?? null,
     commentPosted: false,
     duplicateBlocked: false,
+    rateLimitBlocked: false,
+    rateLimitDetails: null,
     duplicateDetails: null,
     commentId: null,
     commentUrl: null,
@@ -475,6 +538,8 @@ export async function executeTransition(
   // 7. Post comment (before update if commentFirst)
   let commentPosted = false;
   let duplicateBlocked = false;
+  let rateLimitBlocked = false;
+  let rateLimitDetails: { recentCount: number; maxAllowed: number; windowSeconds: number } | null = null;
   let duplicateDetails: SemanticResult["duplicateDetails"] = null;
   let commentId: string | null = null;
   let commentUrl: string | null = null;
@@ -483,19 +548,26 @@ export async function executeTransition(
   let bodyFile: string | null = null;
   if (body && config.commentMode !== "none") {
     if (config.commentFirst) {
-      const dup = args.forceDuplicate ? null : await findRecentDuplicate(args.issueId, body);
-      if (dup) {
-        duplicateBlocked = true;
-        duplicateDetails = { existingCommentId: dup.id, similarity: dup.similarity, ageSeconds: dup.ageSeconds };
-        commentId = dup.id;
+      // Rate limit check (independent of similarity)
+      const rateHit = args.forceDuplicate ? null : await checkCommentRateLimit(args.issueId);
+      if (rateHit) {
+        rateLimitBlocked = true;
+        rateLimitDetails = { recentCount: rateHit.recentCount, maxAllowed: rateHit.maxAllowed, windowSeconds: rateHit.windowSeconds };
       } else {
-        const result = await addComment(args.issueId, body);
-        commentId = result.commentId;
-        commentUrl = result.commentUrl;
-        commentCreatedAt = result.commentCreatedAt;
-        commentBodyLength = result.commentBodyLength;
-        bodyFile = result.bodyFile ?? null;
-        commentPosted = true;
+        const dup = args.forceDuplicate ? null : await findRecentDuplicate(args.issueId, body);
+        if (dup) {
+          duplicateBlocked = true;
+          duplicateDetails = { existingCommentId: dup.id, similarity: dup.similarity, ageSeconds: dup.ageSeconds };
+          commentId = dup.id;
+        } else {
+          const result = await addComment(args.issueId, body);
+          commentId = result.commentId;
+          commentUrl = result.commentUrl;
+          commentCreatedAt = result.commentCreatedAt;
+          commentBodyLength = result.commentBodyLength;
+          bodyFile = result.bodyFile ?? null;
+          commentPosted = true;
+        }
       }
     }
   }
@@ -535,19 +607,26 @@ export async function executeTransition(
 
   // 10. Post comment (after update if not commentFirst)
   if (body && config.commentMode !== "none" && !config.commentFirst) {
-    const dup = args.forceDuplicate ? null : await findRecentDuplicate(args.issueId, body);
-    if (dup) {
-      duplicateBlocked = true;
-      duplicateDetails = { existingCommentId: dup.id, similarity: dup.similarity, ageSeconds: dup.ageSeconds };
-      commentId = dup.id;
+    // Rate limit check (independent of similarity)
+    const rateHit = args.forceDuplicate ? null : await checkCommentRateLimit(args.issueId);
+    if (rateHit) {
+      rateLimitBlocked = true;
+      rateLimitDetails = { recentCount: rateHit.recentCount, maxAllowed: rateHit.maxAllowed, windowSeconds: rateHit.windowSeconds };
     } else {
-      const result = await addComment(args.issueId, body);
-      commentId = result.commentId;
-      commentUrl = result.commentUrl;
-      commentCreatedAt = result.commentCreatedAt;
-      commentBodyLength = result.commentBodyLength;
-      bodyFile = result.bodyFile ?? null;
-      commentPosted = true;
+      const dup = args.forceDuplicate ? null : await findRecentDuplicate(args.issueId, body);
+      if (dup) {
+        duplicateBlocked = true;
+        duplicateDetails = { existingCommentId: dup.id, similarity: dup.similarity, ageSeconds: dup.ageSeconds };
+        commentId = dup.id;
+      } else {
+        const result = await addComment(args.issueId, body);
+        commentId = result.commentId;
+        commentUrl = result.commentUrl;
+        commentCreatedAt = result.commentCreatedAt;
+        commentBodyLength = result.commentBodyLength;
+        bodyFile = result.bodyFile ?? null;
+        commentPosted = true;
+      }
     }
   }
 
@@ -569,6 +648,8 @@ export async function executeTransition(
     assignee: updatedIssue.assignee?.name ?? null,
     commentPosted,
     duplicateBlocked,
+    rateLimitBlocked,
+    rateLimitDetails,
     duplicateDetails,
     commentId: commentId ?? null,
     commentUrl: commentUrl ?? null,
