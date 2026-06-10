@@ -316,6 +316,8 @@ export async function handoffWork(
 
   let comment = options?.comment;
   let commentFile = options?.commentFile;
+  const issue = await getIssue(issueId);
+
   if (options?.reviewHandoff) {
     if (commentFile) {
       const raw = (await fs.readFile(commentFile, "utf8")).trim();
@@ -328,7 +330,6 @@ export async function handoffWork(
       }
     }
 
-    const issue = await getIssue(issueId);
     const teamId = issue.team?.id;
     if (!teamId) {
       throw new Error(`Issue ${issue.identifier} has no team — cannot apply ${AGENT_REVIEW_LABEL}.`);
@@ -341,6 +342,46 @@ export async function handoffWork(
         `Create it via the GraphQL issueLabelCreate mutation (see agent-review-handoff-convention.md for the recipe), then re-run.`
       );
     }
+  }
+
+  // AI-1494: a generic handoff on a live wf:dev-impl ticket is an OWNER change,
+  // not a STATE change. The previous behavior reset the native column to "To Do"
+  // and stripped the `state:*` projection label, mis-rendering the board and
+  // tripping the p65 "no state:* label" wedge. Preserve the state projection:
+  // change only the delegate, leave the native column and the active state:*
+  // label untouched. We send delegateId-only (no stateId, no assigneeId, no
+  // labelIds) so the connector proxy's raw-mutation interception passes it
+  // through as a benign owner change rather than blocking it as a bypass.
+  const DEV_IMPL_STATE_TARGET: Record<string, string> = {
+    "state:intake": "todo",
+    "state:implementation": "doing",
+    "state:code-review": "thinking",
+    "state:deployment": "doing",
+  };
+  const activeStateLabel = (issue.labels ?? [])
+    .map((l) => l.name.toLowerCase())
+    .find((n) => n in DEV_IMPL_STATE_TARGET);
+
+  if (activeStateLabel && !options?.reviewHandoff) {
+    return executeTransition("handoffWork", {
+      issueId,
+      comment,
+      commentFile,
+      userName: delegateName,
+      commandName: "handoff-work",
+      forceDuplicate: options?.forceDuplicate,
+    }, {
+      // targetState resolves the current native state (a no-op for the column);
+      // omitStateId suppresses the write so the proxy stays the sole native writer.
+      targetState: DEV_IMPL_STATE_TARGET[activeStateLabel],
+      commentMode: "optional-with-warning",
+      delegateName: (args) => args.userName,
+      commentFirst: true,
+      omitStateId: true,
+      // Intentionally NOT clearing assignee and NOT stripping the state:* label:
+      // sending assigneeId/labelIds would trip the proxy's raw-mutation block and
+      // dropping the label is exactly the regression this fixes.
+    });
   }
 
   return executeTransition("handoffWork", {
@@ -718,6 +759,7 @@ export async function accept(
     }, {
       targetState: "doing",
       commentMode: "optional",
+      omitStateId: true,
       addLabels: ["state:implementation"],
       removeLabelsIfPresent: ["state:intake", "state:code-review", "state:deployment"],
       ...(target ? { delegateName: (args: TransitionArgs) => args.userName } : {}),
@@ -751,6 +793,7 @@ export async function submit(
     }, {
       targetState: "thinking",
       commentMode: "optional",
+      omitStateId: true,
       addLabels: ["state:code-review"],
       removeLabelsIfPresent: ["state:intake", "state:implementation", "state:deployment"],
       ...(target ? { delegateName: (args: TransitionArgs) => args.userName } : {}),
@@ -781,6 +824,7 @@ export async function approve(
     }, {
       targetState: "doing",
       commentMode: "optional",
+      omitStateId: true,
       addLabels: ["state:deployment"],
       removeLabelsIfPresent: ["state:intake", "state:implementation", "state:code-review"],
     });
@@ -825,6 +869,7 @@ export async function requestChanges(
     }, {
       targetState: "doing",
       commentMode: "required",
+      omitStateId: true,
       addLabels: ["state:implementation"],
       removeLabelsIfPresent: ["state:intake", "state:code-review", "state:deployment"],
       ...(target ? { delegateName: (args: TransitionArgs) => args.userName } : {}),
@@ -855,6 +900,7 @@ export async function deploy(
     }, {
       targetState: "done",
       commentMode: "optional",
+      omitStateId: true,
       clearDelegate: true,
       clearAssignee: true,
       removeLabelsIfPresent: ["state:intake", "state:implementation", "state:code-review", "state:deployment"],
@@ -900,6 +946,7 @@ export async function reject(
     }, {
       targetState: "doing",
       commentMode: "required",
+      omitStateId: true,
       addLabels: ["state:implementation"],
       removeLabelsIfPresent: ["state:intake", "state:code-review", "state:deployment"],
       ...(target ? { delegateName: (args: TransitionArgs) => args.userName } : {}),
@@ -936,6 +983,7 @@ export async function escape(
       // stateless, non-terminal ticket that the connector trapped and looped on.
       targetState: "invalid",
       commentMode: "optional",
+      omitStateId: true,
       clearDelegate: true,
       clearAssignee: true,
       removeLabelsIfPresent: ["state:intake", "state:implementation", "state:code-review", "state:deployment"],
@@ -965,6 +1013,7 @@ export async function demote(
     }, {
       targetState: "backlog",
       commentMode: "optional",
+      omitStateId: true,
       clearDelegate: true,
       clearAssignee: true,
       removeLabelsIfPresent: ["state:intake", "state:implementation", "state:code-review", "state:deployment", "wf:dev-impl"],
