@@ -359,6 +359,42 @@ async function buildObserveContext(issue: Awaited<ReturnType<typeof getIssue>>):
   };
 }
 
+// --- Advancement guard helpers (AI-1562) ---
+
+function stateTypeRank(type: string | null | undefined): number {
+  switch (type?.toLowerCase()) {
+    case "backlog":   return 0;
+    case "unstarted": return 1;
+    case "started":   return 2;
+    case "completed": return 3;
+    case "canceled":  return 3;
+    default:          return 1;
+  }
+}
+
+/**
+ * Returns true when `current` is semantically further along than `target`,
+ * using state type rank as the primary criterion and state identity as the
+ * tiebreak within the "started" tier. Raw Linear board `position` is NOT used —
+ * position is an arbitrary column-ordering float and is not a workflow ordinal
+ * (AI-1562: on team AI, Thinking.position=-1076 < To Do.position=1000, which
+ * caused the old position-compare guard to false-positive no-op from To Do).
+ */
+function isCurrentAheadOfTarget(
+  current: { id?: string; type?: string | null } | null | undefined,
+  target: { id?: string; type?: string | null }
+): boolean {
+  const currentRank = stateTypeRank(current?.type);
+  const targetRank = stateTypeRank(target.type);
+  if (currentRank > targetRank) return true;
+  if (currentRank < targetRank) return false;
+  // Same type rank: within "started", a different state id means the ticket has
+  // already been advanced to a distinct started state (e.g. Doing) and should
+  // not be reverted to the target started state (e.g. Thinking).
+  if ((current?.type?.toLowerCase() ?? "") === "started" && current?.id !== target.id) return true;
+  return false;
+}
+
 // --- State machine executor ---
 
 /**
@@ -438,15 +474,12 @@ export async function executeTransition(
   // 2. Resolve target state
   const state = await findSemanticState(teamId, config.targetState);
 
-  // 2.5. Position-based advancement guard: skip if the current state is already
-  //      further along in the workflow than the target state. This prevents
-  //      consider-work (target=thinking) from reverting a more-advanced state
-  //      (e.g. Doing, code-review, deployment) when a concurrent agent wake fires
-  //      after another agent has already advanced the ticket (AI-1394).
+  // 2.5. Advancement guard: skip if the current state is semantically further along
+  //      than the target state. Prevents consider-work (target=thinking) from
+  //      reverting a more-advanced state when a stale wake fires (AI-1394).
+  //      Uses type rank + state identity — NOT raw board position (AI-1562).
   if (config.skipIfStatePositionAheadOfTarget) {
-    const currentPosition = issue.state?.position ?? null;
-    const targetPosition = state.position ?? null;
-    if (currentPosition !== null && targetPosition !== null && currentPosition > targetPosition) {
+    if (isCurrentAheadOfTarget(issue.state, state)) {
       const result = nullResult(issue.state?.name ?? "Unknown");
       if (config.includeContext) {
         result.context = await buildObserveContext(issue);
