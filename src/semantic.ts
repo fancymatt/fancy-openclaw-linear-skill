@@ -831,6 +831,65 @@ export async function testsReady(
 }
 
 /**
+ * linear brief-ready <id>
+ *
+ * Brief is written and ready; hand off to the image artist.
+ * vocab-image: briefing → generating
+ */
+export async function briefReady(
+  issueId: string,
+  target?: string,
+  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+): Promise<SemanticResult> {
+  setProxyTarget(target);
+  setProxyIntent("brief-ready");
+  try {
+    return await executeTransition("briefReady", {
+      issueId,
+      comment: options?.comment,
+      commentFile: options?.commentFile,
+      forceDuplicate: options?.forceDuplicate,
+      userName: target,
+    }, {
+      targetState: "todo",
+      commentMode: "required",
+      omitStateId: true,
+      ...(target ? { delegateName: (args: TransitionArgs) => args.userName } : {}),
+    });
+  } finally {
+    setProxyIntent(undefined);
+    setProxyTarget(undefined);
+  }
+}
+
+/**
+ * linear filed <id>
+ *
+ * Approved image filed to the illustrations folder; close the ticket.
+ * vocab-image: filing → done
+ */
+export async function filed(
+  issueId: string,
+  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
+): Promise<SemanticResult> {
+  setProxyIntent("filed");
+  try {
+    return await executeTransition("filed", {
+      issueId,
+      comment: options?.comment,
+      commentFile: options?.commentFile,
+      forceDuplicate: options?.forceDuplicate,
+    }, {
+      targetState: "done",
+      commentMode: "required",
+      omitStateId: true,
+    });
+  } finally {
+    setProxyIntent(undefined);
+  }
+}
+
+/**
  * linear submit <id>
  *
  * Submit implementation work for code review.
