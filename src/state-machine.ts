@@ -622,7 +622,13 @@ export async function executeTransition(
     assigneeNameResult = null;
   }
 
-  // 7. Post comment (before update if commentFirst)
+  // For proxy-governed transitions (omitStateId=true) that carry a comment, the comment
+  // itself carries the intent header and triggers applyStateTransition in the proxy.
+  // Post the comment FIRST and skip the issueUpdate entirely: if the update fired first,
+  // the proxy would transition the state and then block the subsequent comment (wrong state).
+  const commentTriggersProxy = !!(config.omitStateId && body && config.commentMode !== "none");
+
+  // 7. Post comment (before update when commentFirst or commentTriggersProxy)
   let commentPosted = false;
   let duplicateBlocked = false;
   let rateLimitBlocked = false;
@@ -634,7 +640,7 @@ export async function executeTransition(
   let commentBodyLength: number | null = null;
   let bodyFile: string | null = null;
   if (body && config.commentMode !== "none") {
-    if (config.commentFirst) {
+    if (config.commentFirst || commentTriggersProxy) {
       // Rate limit check (independent of similarity)
       const rateHit = args.forceDuplicate ? null : await checkCommentRateLimit(args.issueId);
       if (rateHit) {
@@ -669,34 +675,37 @@ export async function executeTransition(
   if (addedLabelIds?.length) updatePayload.addedLabelIds = addedLabelIds;
   if (removedLabelIds?.length) updatePayload.removedLabelIds = removedLabelIds;
 
-  // 9. Execute update
-  const updatedIssue = await updateIssue(args.issueId, updatePayload);
+  // 9. Execute update (skipped when the comment already triggered applyStateTransition)
+  let updatedIssue = issue;
+  if (!commentTriggersProxy) {
+    updatedIssue = await updateIssue(args.issueId, updatePayload);
 
-  // 9.5. Post-update label verification: if the mutation set a new state:* label
-  //      but a prior state:* label persists (concurrent write, API race), issue a
-  //      corrective removal to guarantee at most one state:* label (AI-1389).
-  if (config.addLabels?.length && config.removeLabelsIfPresent?.length) {
-    const newStateLabels = config.addLabels.filter((n) => n.toLowerCase().startsWith("state:"));
-    if (newStateLabels.length > 0) {
-      const actualLabels = (updatedIssue.labels ?? []).map((l) => l.name.toLowerCase());
-      const staleLabels = actualLabels.filter(
-        (l) => l.startsWith("state:") && !newStateLabels.some((n) => n.toLowerCase() === l)
-      );
-      if (staleLabels.length > 0) {
-        process.stderr.write(
-          `Warning: stale state:* labels detected after update: [${staleLabels.join(", ")}]. ` +
-          `Issuing corrective removal (AI-1389).\n`
+    // 9.5. Post-update label verification: if the mutation set a new state:* label
+    //      but a prior state:* label persists (concurrent write, API race), issue a
+    //      corrective removal to guarantee at most one state:* label (AI-1389).
+    if (config.addLabels?.length && config.removeLabelsIfPresent?.length) {
+      const newStateLabels = config.addLabels.filter((n) => n.toLowerCase().startsWith("state:"));
+      if (newStateLabels.length > 0) {
+        const actualLabels = (updatedIssue.labels ?? []).map((l) => l.name.toLowerCase());
+        const staleLabels = actualLabels.filter(
+          (l) => l.startsWith("state:") && !newStateLabels.some((n) => n.toLowerCase() === l)
         );
-        const staleIds = await resolveLabelIds(teamId, staleLabels);
-        if (staleIds.length > 0) {
-          await updateIssue(args.issueId, { removedLabelIds: staleIds });
+        if (staleLabels.length > 0) {
+          process.stderr.write(
+            `Warning: stale state:* labels detected after update: [${staleLabels.join(", ")}]. ` +
+            `Issuing corrective removal (AI-1389).\n`
+          );
+          const staleIds = await resolveLabelIds(teamId, staleLabels);
+          if (staleIds.length > 0) {
+            await updateIssue(args.issueId, { removedLabelIds: staleIds });
+          }
         }
       }
     }
   }
 
-  // 10. Post comment (after update if not commentFirst)
-  if (body && config.commentMode !== "none" && !config.commentFirst) {
+  // 10. Post comment (after update if not commentFirst and not already posted via commentTriggersProxy)
+  if (body && config.commentMode !== "none" && !config.commentFirst && !commentTriggersProxy) {
     // Rate limit check (independent of similarity)
     const rateHit = args.forceDuplicate ? null : await checkCommentRateLimit(args.issueId);
     if (rateHit) {
