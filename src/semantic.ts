@@ -1329,8 +1329,10 @@ export async function stewardTakeover(
 /**
  * linear escape <id>
  *
- * Break-glass: steward escapes the ticket out of the workflow.
- * dev-impl: any state → escape terminal (steward action)
+ * Break-glass: re-enters the ticket at workflow intake (any state → intake).
+ * Clears delegate, assignee, and state labels; keeps wf:* label.
+ * The connector applies state:intake and re-delegates to the steward.
+ * dev-impl: any state → intake (steward action)
  */
 export async function escape(
   issueId: string,
@@ -1344,46 +1346,15 @@ export async function escape(
       commentFile: options?.commentFile,
       forceDuplicate: options?.forceDuplicate,
     }, {
-      // escape is a TERMINAL state (dev-impl.yaml). It must land in a native
-      // terminal (canceled-type "Invalid") state — mirroring how `done` lands
-      // in native Done — so the connector treats the ticket as terminal and
-      // stops dispatching. Landing in "backlog" (non-terminal) while stripping
-      // all state:* labels but keeping wf:dev-impl produced a governed,
-      // stateless, non-terminal ticket that the connector trapped and looped on.
-      targetState: "invalid",
+      // escape re-enters at intake (native Todo). The connector's break_glass.to
+      // is "intake", so applyStateTransition stamps state:intake and delegates
+      // to the steward. omitStateId skips the CLI's own label write (connector
+      // handles it); clearDelegate/clearAssignee wipe the prior owner.
+      targetState: "todo",
       commentMode: "optional",
       omitStateId: true,
       clearDelegate: true,
       clearAssignee: true,
-    });
-  } finally {
-    setProxyIntent(undefined);
-  }
-}
-
-/**
- * linear unescape <id>
- *
- * Recovery: reverse a break-glass escape and re-enter the workflow at intake.
- * dev-impl: escape terminal → intake (steward action)
- */
-export async function unescape(
-  issueId: string,
-  options?: { comment?: string; commentFile?: string; forceDuplicate?: boolean }
-): Promise<SemanticResult> {
-  setProxyIntent("unescape");
-  try {
-    return await executeTransition("unescape", {
-      issueId,
-      comment: options?.comment,
-      commentFile: options?.commentFile,
-      forceDuplicate: options?.forceDuplicate,
-    }, {
-      // unescape re-enters at intake (native Todo). The connector's workflow
-      // definition has this as a defined transition: escape → intake.
-      targetState: "todo",
-      commentMode: "optional",
-      omitStateId: true,
     });
   } finally {
     setProxyIntent(undefined);
